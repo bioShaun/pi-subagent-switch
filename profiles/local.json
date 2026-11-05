@@ -1,0 +1,30 @@
+{
+  "defaultModel": "qwen-local/qwen3.8-27b",
+  "agentOverrides": {
+    "oracle": { "model": "qwen-local/qwen3.8-27b", "thinking": "off" },
+    "evidence-auditor": { "model": "qwen-local/qwen3.8-27b", "thinking": "off" },
+    "delegate": { "model": "qwen-local/qwen3.8-27b", "thinking": "off" },
+    "reviewer": {
+      "model": "qwen-local/qwen3.8-27b",
+      "thinking": "off",
+      "subagentOnlyExtensions": [
+        "/home/tcuni-claw/.pi/agent/git/github.com/bioShaun/pi-planner-only/reviewer-git.ts"
+      ],
+      "tools": ["read", "grep", "find", "ls", "watchdog_diff", "contact_supervisor", "git_review"]
+    },
+    "worker": {
+      "model": "qwen-local/qwen3.8-27b",
+      "thinking": "off",
+      "subagentOnlyExtensions": ["/public/config/pi/shared/pi-apply-patch/src/index.ts"],
+      "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor", "apply_patch"],
+      "mutationTools": ["apply_patch"]
+    },
+    "researcher": { "model": "qwen-local/qwen3.8-27b", "thinking": "off" },
+    "scout": {
+      "model": "qwen-local/qwen3.8-27b",
+      "thinking": "off",
+      "tools": ["read", "grep", "find", "ls", "bash", "write", "contact_supervisor"]
+    },
+    "planner-validator": { "model": "qwen-local/qwen3.8-27b", "thinking": "off" }
+  }
+}

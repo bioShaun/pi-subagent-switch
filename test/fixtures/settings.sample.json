@@ -1,0 +1,51 @@
+{
+  "theme": "dark",
+  "packages": [
+    "github.com/bioShaun/pi-planner-only",
+    "/public/config/pi/shared/pi-apply-patch"
+  ],
+  "compaction": { "enabled": true, "threshold": 0.8 },
+  "enabledModels": [
+    "tcuni/gpt-6.1-terra",
+    "tcuni/gpt-6-astra",
+    "tcuni/gpt-6.1-sol",
+    "tcuni/gpt-6-luna",
+    "kimi-coding/k3.1-pro",
+    "kimi-coding/k3-256k",
+    "kimi-coding/kimi-for-coding",
+    "tcuni-claude/claude-opus-5-5",
+    "tcuni-claude/claude-sonnet-5-5",
+    "qwen-local/qwen3.8-27b"
+  ],
+  "defaultTools": ["read", "grep", "find", "ls", "bash", "edit", "write"],
+  "subagents": {
+    "defaultModel": "tcuni/gpt-6.1-terra",
+    "agentOverrides": {
+      "oracle": { "model": "tcuni/gpt-6-astra", "thinking": "high" },
+      "evidence-auditor": { "model": "tcuni/gpt-6.1-sol", "thinking": "high" },
+      "delegate": { "model": "tcuni/gpt-6.1-terra", "thinking": "medium" },
+      "reviewer": {
+        "model": "tcuni/gpt-6-astra",
+        "thinking": "high",
+        "subagentOnlyExtensions": [
+          "/home/tcuni-claw/.pi/agent/git/github.com/bioShaun/pi-planner-only/reviewer-git.ts"
+        ],
+        "tools": ["read", "grep", "find", "ls", "watchdog_diff", "contact_supervisor", "git_review"]
+      },
+      "worker": {
+        "model": "tcuni/gpt-6.1-terra",
+        "thinking": "medium",
+        "subagentOnlyExtensions": ["/public/config/pi/shared/pi-apply-patch/src/index.ts"],
+        "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor", "apply_patch"],
+        "mutationTools": ["apply_patch"]
+      },
+      "researcher": { "model": "tcuni/gpt-6-luna", "thinking": "medium" },
+      "scout": {
+        "model": "tcuni/gpt-6-luna",
+        "thinking": "low",
+        "tools": ["read", "grep", "find", "ls", "bash", "write", "contact_supervisor"]
+      },
+      "planner-validator": { "model": "tcuni/gpt-6.1-terra", "thinking": "medium" }
+    }
+  }
+}

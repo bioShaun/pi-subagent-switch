@@ -1,0 +1,15 @@
+{
+  "name": "pi-subagent-switch",
+  "version": "0.1.0",
+  "description": "Pi extension: switch the whole pi-subagents `subagents` block from hand-written profile files",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["pi-package", "pi-subagents", "subagents", "profile", "tui"],
+  "pi": { "extensions": ["./extensions/index.ts"] },
+  "files": ["src", "extensions", "profiles", "README.md"],
+  "peerDependencies": { "@earendil-works/pi-coding-agent": ">=1.5.0 <2" },
+  "peerDependenciesMeta": { "@earendil-works/pi-coding-agent": { "optional": true } },
+  "scripts": { "test": "node --test \"test/*.test.ts\"", "typecheck": "tsc --noEmit" },
+  "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.0" },
+  "engines": { "node": ">=24" }
+}

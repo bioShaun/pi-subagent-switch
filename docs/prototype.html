@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>pi-subagent-switch · 交互原型</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --surface: #11161d;
+    --surface-raised: #161d26;
+    --surface-active: #1b2835;
+    --border: #28313c;
+    --border-strong: #3a4756;
+    --fg: #dce4ed;
+    --muted: #8996a6;
+    --faint: #5e6b7a;
+    --accent: #6cb6ff;
+    --green: #56d38a;
+    --yellow: #e3b341;
+    --red: #ff7b72;
+    --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  button, input, select { font: inherit; }
+  button, select { color: inherit; }
+  button { cursor: pointer; }
+  button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .app {
+    width: min(1240px, 100%);
+    height: calc(100vh - 48px);
+    min-height: 640px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 0 2px 4px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    display: grid;
+    grid-template-columns: repeat(2, 6px);
+    grid-template-rows: repeat(2, 6px);
+    place-content: center;
+    gap: 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    background: var(--surface);
+  }
+  .brand-mark i { width: 6px; height: 6px; border-radius: 2px; background: var(--muted); }
+  .brand-mark i:first-child { background: var(--accent); }
+  .brand h1 { margin: 0; font-size: 15px; line-height: 1.4; letter-spacing: .01em; }
+  .brand p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+  .environment { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--muted);
+    background: var(--surface);
+    font-size: 10px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+  .workspace {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr);
+    gap: 12px;
+  }
+  .pane {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+  }
+  .pane-head {
+    min-height: 43px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-raised);
+  }
+  .pane-title { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+  .pane-title .index { color: var(--faint); font-weight: 400; }
+  .pane-meta { color: var(--muted); font-size: 10px; white-space: nowrap; }
+  .log {
+    flex: 1;
+    min-height: 180px;
+    overflow-y: auto;
+    padding: 16px;
+    line-height: 1.75;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  .line {
+    position: relative;
+    padding-left: 15px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .line::before { position: absolute; left: 0; color: var(--faint); }
+  .line.cmd { color: var(--accent); margin-top: 8px; }
+  .line.cmd::before { content: "›"; color: var(--accent); }
+  .line.ok { color: var(--green); }
+  .line.ok::before { content: "✓"; }
+  .line.warn { color: var(--yellow); }
+  .line.warn::before { content: "!"; }
+  .line.error { color: var(--red); }
+  .line.error::before { content: "×"; }
+  .line.sys { color: var(--muted); }
+  .line.sys::before { content: "·"; }
+  .line.info { color: var(--fg); }
+  .line.info::before { content: " "; }
+  .selector {
+    flex: 0 0 auto;
+    margin: 0 12px 12px;
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: #131b24;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .22);
+  }
+  .selector-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .selector-title { color: var(--accent); font-size: 12px; font-weight: 600; }
+  .selector-current { color: var(--muted); font-size: 10px; font-weight: 400; }
+  .icon-button {
+    width: 25px;
+    height: 25px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+  }
+  .icon-button:hover { background: var(--surface-active); color: var(--fg); }
+  .selector-list { max-height: 248px; overflow-y: auto; padding: 6px; }
+  .selector-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 16px 76px minmax(0, 1fr) auto 16px;
+    align-items: center;
+    gap: 7px;
+    padding: 8px;
+    border: 0;
+    border-left: 2px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    text-align: left;
+    font-size: 11px;
+  }
+  .selector-row:hover { background: var(--surface-raised); }
+  .selector-row.cursor { border-left-color: var(--accent); background: var(--surface-active); }
+  .selector-row.current .selector-name { color: var(--fg); font-weight: 700; }
+  .selector-pointer { color: var(--accent); }
+  .selector-model { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+  .selector-count { color: var(--faint); white-space: nowrap; }
+  .selector-marker { color: var(--green); }
+  .selector-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 10px;
+  }
+  kbd {
+    padding: 1px 4px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-raised);
+    color: var(--muted);
+    font: inherit;
+    font-size: 10px;
+  }
+  .command-area { border-top: 1px solid var(--border); background: var(--surface-raised); }
+  .cmdline { display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px; }
+  .prompt { color: var(--green); font-size: 17px; font-weight: 700; }
+  .cmdline input {
+    min-width: 0;
+    flex: 1;
+    padding: 2px 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--fg);
+    caret-color: var(--accent);
+  }
+  .cmdline input::placeholder { color: var(--faint); }
+  .cmd-hint { color: var(--faint); font-size: 10px; white-space: nowrap; }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 14px 12px; }
+  .action, .profile-select {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: #1a222c;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .action { padding: 5px 9px; }
+  .action:hover { border-color: var(--border-strong); background: var(--surface-active); color: var(--fg); }
+  .action.primary { border-color: #376485; background: #192c3d; color: #a9d4ff; }
+  .action.danger:hover { border-color: #735e32; color: var(--yellow); }
+  .backup-note {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    color: var(--faint);
+    font-size: 10px;
+  }
+  .backup-note span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .profile-select {
+    max-width: 220px;
+    padding: 5px 7px;
+    outline: 0;
+  }
+  .pathbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--faint);
+    font-size: 10px;
+  }
+  .pathbar span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .json-view {
+    flex: 1;
+    min-height: 180px;
+    margin: 0;
+    overflow: auto;
+    padding: 14px 16px;
+    color: #a9c7e8;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1.65;
+    tab-size: 2;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  .profiles-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 14px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .profile-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 0 12px 12px; }
+  .profile-card {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 8px;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-raised);
+    text-align: left;
+  }
+  .profile-card:hover { border-color: var(--border-strong); }
+  .profile-card.current { border-color: #315b46; background: #15231e; }
+  .profile-name { color: var(--fg); font-size: 11px; font-weight: 600; }
+  .profile-model { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .profile-count { grid-row: 1 / 3; grid-column: 2; align-self: center; color: var(--faint); font-size: 9px; }
+  .current-label { margin-left: 5px; color: var(--green); font-size: 9px; font-weight: 400; }
+  .statusbar {
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface-raised);
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .statusbar .spacer { flex: 1; }
+  .status-scope { color: var(--faint); }
+  .status-profile { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); }
+  .status-dot { color: var(--green); }
+  .status-profile.custom .status-dot { color: var(--yellow); }
+  .note { margin: -4px 0 0; color: var(--faint); font-size: 10px; text-align: center; }
+  @media (max-width: 900px) {
+    body { padding: 16px; }
+    .app { height: auto; min-height: calc(100vh - 32px); }
+    .workspace { grid-template-columns: 1fr; }
+    .log { min-height: 300px; max-height: 44vh; }
+    .json-view { min-height: 300px; max-height: 48vh; }
+    .environment .badge:last-child { display: none; }
+  }
+  @media (max-width: 560px) {
+    body { padding: 10px; }
+    .app { min-height: calc(100vh - 20px); gap: 9px; }
+    .brand p, .environment, .pane-meta, .status-scope, .cmd-hint { display: none; }
+    .workspace { gap: 9px; }
+    .selector-row { grid-template-columns: 14px 62px minmax(0, 1fr) 14px; }
+    .selector-count { display: none; }
+    .selector-foot { flex-direction: column; gap: 5px; }
+    .profile-list { grid-template-columns: 1fr; }
+    .statusbar { gap: 10px; }
+    .statusbar > span:nth-child(3) { display: none; }
+    .note { line-height: 1.6; }
+  }
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="titlebar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <div>
+        <h1>pi-subagent-switch</h1>
+        <p>一键切换 Pi subagents 配置档 · 交互与视觉原型</p>
+      </div>
+    </div>
+    <div class="environment">
+      <span class="badge">Offline demo</span>
+      <span class="badge">Pi 1.5 · subagents 0.85</span>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <section class="pane" aria-label="Pi 会话演示">
+      <div class="pane-head">
+        <span class="pane-title"><span class="index">01</span> Pi session</span>
+        <span class="pane-meta">/subprofile</span>
+      </div>
+
+      <div id="log" class="log" role="log" aria-live="polite" aria-label="命令输出"></div>
+
+      <section id="selector" class="selector" aria-label="选择配置档" hidden>
+        <div class="selector-head">
+          <div>
+            <span class="selector-title">切换 subagents 配置档</span>
+            <span id="selectorCurrent" class="selector-current"></span>
+          </div>
+          <button id="closeSelector" class="icon-button" type="button" aria-label="取消选择">×</button>
+        </div>
+        <div id="selectorList" class="selector-list" role="listbox" aria-label="可用配置档"></div>
+        <div class="selector-foot">
+          <span><kbd>↑</kbd> <kbd>↓</kbd> / <kbd>j</kbd> <kbd>k</kbd> 选择 · <kbd>Enter</kbd> 应用</span>
+          <span><kbd>Esc</kbd> / <kbd>Ctrl+C</kbd> 取消</span>
+        </div>
+      </section>
+
+      <div class="command-area">
+        <form id="cmdform" class="cmdline" autocomplete="off">
+          <span class="prompt" aria-hidden="true">›</span>
+          <input id="cmd" aria-label="Pi 命令" placeholder="/subprofile list" spellcheck="false" autofocus>
+          <span class="cmd-hint"><kbd>Tab</kbd> 补全</span>
+        </form>
+        <div class="quick" aria-label="快捷操作">
+          <button class="action primary" type="button" data-cmd="/subprofile">打开选择器</button>
+          <button class="action" type="button" data-cmd="/subprofile list">list</button>
+          <button class="action" type="button" data-cmd="/subprofile kimi">kimi</button>
+          <button class="action" type="button" data-cmd="/subprofile claude">claude</button>
+          <button class="action" type="button" data-cmd="/subprofile local">local</button>
+          <button class="action" type="button" data-cmd="/subprofile gpt">gpt</button>
+          <button id="customDemo" class="action danger" type="button">演示 custom</button>
+          <button id="resetDemo" class="action" type="button">重置</button>
+        </div>
+        <div class="backup-note">
+          <span id="backupInfo">尚未产生备份</span>
+          <span>内存模拟 · 不写真实文件</span>
+        </div>
+      </div>
+    </section>
+
+    <aside class="pane" aria-label="配置检查器">
+      <div class="pane-head">
+        <span class="pane-title"><span class="index">02</span> 配置检查器</span>
+        <select id="profileSelect" class="profile-select" aria-label="选择预览内容">
+          <option value="__current__">settings.json · 完整文档</option>
+          <option value="gpt">gpt.json · subagents</option>
+          <option value="kimi">kimi.json · subagents</option>
+          <option value="claude">claude.json · subagents</option>
+          <option value="local">local.json · subagents</option>
+        </select>
+      </div>
+      <div class="pathbar">
+        <span id="previewPath">~/.pi/agent/settings.json</span>
+        <span id="previewKind">user level</span>
+      </div>
+      <pre id="jsonView" class="json-view" aria-label="JSON 预览"></pre>
+      <div class="profiles-head">
+        <span>可用配置档</span>
+        <span id="profileCount">4 profiles</span>
+      </div>
+      <div id="profileList" class="profile-list"></div>
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <span>mode: tui</span>
+    <span>tcuni/gpt-6.1-sol</span>
+    <span id="availableCount">4 档可用</span>
+    <span class="status-scope">user settings only</span>
+    <span class="spacer"></span>
+    <span id="statusProfile" class="status-profile"><span class="status-dot">●</span><span id="statusText">subagents: gpt</span></span>
+  </footer>
+  <p class="note">仅演示命令与状态变化 · settings 和备份均保存在页面内存中 · 项目级覆盖不在此原型范围内</p>
+</main>
+
+<script>
+"use strict";
+
+const GPT = {
+  defaultModel: "tcuni/gpt-6.1-terra",
+  agentOverrides: {
+    "oracle": { model: "tcuni/gpt-6-astra", thinking: "high" },
+    "evidence-auditor": { model: "tcuni/gpt-6.1-sol", thinking: "high" },
+    "delegate": { model: "tcuni/gpt-6.1-terra", thinking: "medium" },
+    "reviewer": {
+      model: "tcuni/gpt-6-astra", thinking: "high",
+      subagentOnlyExtensions: ["/home/tcuni-claw/.pi/agent/git/github.com/bioShaun/pi-planner-only/reviewer-git.ts"],
+      tools: ["read", "grep", "find", "ls", "watchdog_diff", "contact_supervisor", "git_review"]
+    },
+    "worker": {
+      model: "tcuni/gpt-6.1-terra", thinking: "medium",
+      subagentOnlyExtensions: ["/public/config/pi/shared/pi-apply-patch/src/index.ts"],
+      tools: ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor", "apply_patch"],
+      mutationTools: ["apply_patch"]
+    },
+    "researcher": { model: "tcuni/gpt-6-luna", thinking: "medium" },
+    "scout": {
+      model: "tcuni/gpt-6-luna", thinking: "low",
+      tools: ["read", "grep", "find", "ls", "bash", "write", "contact_supervisor"]
+    },
+    "planner-validator": { model: "tcuni/gpt-6.1-terra", thinking: "medium" }
+  }
+};
+
+function derive(defaultModel, models, thinking) {
+  const profile = clone(GPT);
+  profile.defaultModel = defaultModel;
+  for (const [name, model] of Object.entries(models)) {
+    profile.agentOverrides[name].model = model;
+    if (thinking) profile.agentOverrides[name].thinking = thinking;
+  }
+  return profile;
+}
+
+const PROFILES = {
+  gpt: GPT,
+  kimi: derive("kimi-coding/k3.1-pro", {
+    "oracle": "kimi-coding/k3.1-pro",
+    "evidence-auditor": "kimi-coding/k3-256k",
+    "delegate": "kimi-coding/k3.1-pro",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "worker": "kimi-coding/k3.1-pro",
+    "researcher": "kimi-coding/kimi-for-coding",
+    "scout": "kimi-coding/kimi-for-coding",
+    "planner-validator": "kimi-coding/k3.1-pro"
+  }),
+  claude: derive("tcuni-claude/claude-opus-5-5", {
+    "oracle": "tcuni-claude/claude-opus-5-5",
+    "evidence-auditor": "tcuni-claude/claude-opus-5-5",
+    "delegate": "tcuni-claude/claude-sonnet-5-5",
+    "reviewer": "tcuni-claude/claude-opus-5-5",
+    "worker": "tcuni-claude/claude-sonnet-5-5",
+    "researcher": "tcuni-claude/claude-sonnet-5-5",
+    "scout": "tcuni-claude/claude-sonnet-5-5",
+    "planner-validator": "tcuni-claude/claude-sonnet-5-5"
+  }),
+  local: derive("qwen-local/qwen3.8-27b", {
+    "oracle": "qwen-local/qwen3.8-27b",
+    "evidence-auditor": "qwen-local/qwen3.8-27b",
+    "delegate": "qwen-local/qwen3.8-27b",
+    "reviewer": "qwen-local/qwen3.8-27b",
+    "worker": "qwen-local/qwen3.8-27b",
+    "researcher": "qwen-local/qwen3.8-27b",
+    "scout": "qwen-local/qwen3.8-27b",
+    "planner-validator": "qwen-local/qwen3.8-27b"
+  }, "off")
+};
+
+const ORDER = ["gpt", "kimi", "claude", "local"];
+const USAGE = "用法：/subprofile [name|list]\n  /subprofile          → 打开选择器\n  /subprofile kimi     → 直接切换到 kimi 档\n  /subprofile list     → 列出所有档与当前档";
+const BASE_SETTINGS = {
+  theme: "dark",
+  packages: ["file:/home/tcuni-claw/pi/pi-subagents"],
+  compaction: { enabled: true, reserveTokens: 16384 },
+  enabledModels: ["tcuni/gpt-6.1-terra", "kimi-coding/k3.1-pro", "tcuni-claude/claude-opus-5-5", "qwen-local/qwen3.8-27b"],
+  defaultTools: ["read", "grep", "find", "ls", "bash"]
+};
+
+const logEl = document.getElementById("log");
+const cmdInput = document.getElementById("cmd");
+const cmdForm = document.getElementById("cmdform");
+const selector = document.getElementById("selector");
+const selectorList = document.getElementById("selectorList");
+const selectorCurrent = document.getElementById("selectorCurrent");
+const jsonView = document.getElementById("jsonView");
+const profileSelect = document.getElementById("profileSelect");
+const profileList = document.getElementById("profileList");
+const statusProfile = document.getElementById("statusProfile");
+const statusText = document.getElementById("statusText");
+const previewPath = document.getElementById("previewPath");
+const previewKind = document.getElementById("previewKind");
+const backupInfo = document.getElementById("backupInfo");
+
+let settingsDoc;
+let backups;
+let selectorOpen = false;
+let cursor = 0;
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function currentProfile() {
+  return [...ORDER].sort().find((name) => stableStringify(PROFILES[name]) === stableStringify(settingsDoc.subagents)) || "custom";
+}
+
+function count(profile) {
+  return Object.keys(profile.agentOverrides || {}).length;
+}
+
+function stamp() {
+  const date = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+function log(kind, text) {
+  const line = document.createElement("div");
+  line.className = `line ${kind}`;
+  line.textContent = text;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function updateStatus() {
+  const current = currentProfile();
+  statusText.textContent = `subagents: ${current}`;
+  statusProfile.classList.toggle("custom", current === "custom");
+}
+
+function renderProfiles() {
+  const current = currentProfile();
+  profileList.replaceChildren();
+  for (const name of ORDER) {
+    const profile = PROFILES[name];
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = `profile-card${name === current ? " current" : ""}`;
+    card.setAttribute("aria-label", `预览 ${name}.json`);
+
+    const title = document.createElement("span");
+    title.className = "profile-name";
+    title.textContent = name;
+    if (name === current) {
+      const label = document.createElement("span");
+      label.className = "current-label";
+      label.textContent = "● current";
+      title.appendChild(label);
+    }
+
+    const model = document.createElement("span");
+    model.className = "profile-model";
+    model.textContent = profile.defaultModel;
+    const total = document.createElement("span");
+    total.className = "profile-count";
+    total.textContent = `${count(profile)} overrides`;
+    card.append(title, model, total);
+    card.addEventListener("click", () => {
+      profileSelect.value = name;
+      renderJson();
+    });
+    profileList.appendChild(card);
+  }
+}
+
+function renderJson() {
+  const selected = profileSelect.value;
+  if (selected === "__current__") {
+    jsonView.textContent = JSON.stringify(settingsDoc, null, 2);
+    previewPath.textContent = "~/.pi/agent/settings.json";
+    previewKind.textContent = "user level";
+    return;
+  }
+  jsonView.textContent = JSON.stringify(PROFILES[selected], null, 2);
+  previewPath.textContent = `~/.pi/agent/subagent-profiles/${selected}.json`;
+  previewKind.textContent = "profile source";
+}
+
+function renderBackup() {
+  if (backups.length === 0) {
+    backupInfo.textContent = "尚未产生备份";
+    return;
+  }
+  backupInfo.textContent = `最近备份 ${backups.at(-1).path} · 共 ${backups.length} 个`;
+}
+
+function renderAll() {
+  updateStatus();
+  renderProfiles();
+  renderJson();
+  renderBackup();
+}
+
+function renderSelector() {
+  const current = currentProfile();
+  selectorCurrent.textContent = `　当前：${current} · ${ORDER.length} 档`;
+  selectorList.replaceChildren();
+  ORDER.forEach((name, index) => {
+    const profile = PROFILES[name];
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `selector-row${index === cursor ? " cursor" : ""}${name === current ? " current" : ""}`;
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(index === cursor));
+
+    const pointer = document.createElement("span");
+    pointer.className = "selector-pointer";
+    pointer.textContent = index === cursor ? "▶" : "";
+    const title = document.createElement("span");
+    title.className = "selector-name";
+    title.textContent = name;
+    const model = document.createElement("span");
+    model.className = "selector-model";
+    model.textContent = profile.defaultModel;
+    const total = document.createElement("span");
+    total.className = "selector-count";
+    total.textContent = `${count(profile)} overrides`;
+    const marker = document.createElement("span");
+    marker.className = "selector-marker";
+    marker.textContent = name === current ? "●" : "";
+    row.append(pointer, title, model, total, marker);
+    row.addEventListener("click", () => {
+      closeSelector(false);
+      applyProfile(name);
+      renderAll();
+    });
+    selectorList.appendChild(row);
+  });
+}
+
+function openSelector() {
+  const current = currentProfile();
+  cursor = Math.max(0, ORDER.indexOf(current));
+  selectorOpen = true;
+  selector.hidden = false;
+  cmdInput.blur();
+  selector.tabIndex = -1;
+  selector.focus();
+  renderSelector();
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function closeSelector(focusInput = true) {
+  selectorOpen = false;
+  selector.hidden = true;
+  if (focusInput) cmdInput.focus();
+}
+
+function cancelSelector() {
+  closeSelector();
+  log("sys", "已取消，settings 与备份均未变化");
+}
+
+function applyProfile(name) {
+  const profile = PROFILES[name];
+  if (!profile) {
+    log("error", `未找到档 "${name}"；可用：${ORDER.join(", ")}`);
+    return;
+  }
+  if (stableStringify(settingsDoc.subagents) === stableStringify(profile)) {
+    log("ok", `已是当前档 "${name}"：内容一致，未写入、未备份`);
+    return;
+  }
+
+  const backupPath = `settings.json.bak-${stamp()}`;
+  if (backups.some((backup) => backup.path === backupPath)) {
+    log("error", `备份 ${backupPath} 已存在，请稍后重试；settings 未修改`);
+    return;
+  }
+
+  backups.push({ path: backupPath, raw: `${JSON.stringify(settingsDoc, null, 2)}\n` });
+  settingsDoc = { ...settingsDoc, subagents: clone(profile) };
+  const preserved = Object.keys(settingsDoc).filter((key) => key !== "subagents").length;
+  log("ok", `已切换到档 "${name}"（备份 ${backupPath}）`);
+  log("sys", `subagents 整块替换 · ${count(profile)} 个 override · 其余 ${preserved} 个顶层键的 JSON 值保留`);
+  log("sys", "下一次启动 subagent 生效，无需 /reload；已在运行的不受影响");
+  profileSelect.value = "__current__";
+}
+
+function listProfiles() {
+  const current = currentProfile();
+  log("info", "档目录：~/.pi/agent/subagent-profiles (user)");
+  for (const name of ORDER) {
+    const profile = PROFILES[name];
+    const marker = name === current ? "●" : " ";
+    log("info", `${marker} ${name} — ${profile.defaultModel} (${count(profile)} overrides)`);
+  }
+}
+
+function runCommand(raw) {
+  try {
+    if (!/^\/subprofile(?:\s|$)/.test(raw)) {
+      log("warn", `未知命令；请输入 /subprofile 开头\n${USAGE}`);
+      return;
+    }
+    const args = raw.replace(/^\/subprofile\s*/, "").trim().split(/\s+/).filter(Boolean);
+    if (args.length === 0) { openSelector(); return; }
+    if (args.length > 1) { log("warn", `参数过多：\n${USAGE}`); return; }
+    if (args[0] === "list" || args[0] === "ls") { listProfiles(); return; }
+    if (args[0] === "help" || args[0] === "-h" || args[0] === "--help") { log("info", USAGE); return; }
+    applyProfile(args[0]);
+  } finally {
+    renderAll();
+  }
+}
+
+function execute(raw) {
+  const command = raw.trim();
+  if (!command) return;
+  log("cmd", command);
+  runCommand(command);
+}
+
+cmdForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const raw = cmdInput.value;
+  cmdInput.value = "";
+  execute(raw);
+});
+
+cmdInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Tab" || selectorOpen) return;
+  const match = cmdInput.value.match(/^\/subprofile\s+([^\s]*)$/);
+  if (!match) return;
+  event.preventDefault();
+  const prefix = match[1];
+  const candidates = [...ORDER, "list"].filter((name) => name.startsWith(prefix));
+  if (candidates.length === 1) {
+    cmdInput.value = `/subprofile ${candidates[0]}`;
+  } else if (candidates.length > 1) {
+    log("sys", `补全候选：${candidates.join("  ")}`);
+  } else {
+    log("sys", `没有以 "${prefix}" 开头的档名`);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!selectorOpen) return;
+  if (event.key === "ArrowUp" || event.key === "k") {
+    event.preventDefault();
+    cursor = (cursor - 1 + ORDER.length) % ORDER.length;
+    renderSelector();
+  } else if (event.key === "ArrowDown" || event.key === "j") {
+    event.preventDefault();
+    cursor = (cursor + 1) % ORDER.length;
+    renderSelector();
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    const name = ORDER[cursor];
+    closeSelector(false);
+    applyProfile(name);
+    renderAll();
+  } else if (event.key === "Escape" || (event.key === "c" && event.ctrlKey)) {
+    event.preventDefault();
+    cancelSelector();
+  }
+});
+
+for (const button of document.querySelectorAll("button[data-cmd]")) {
+  button.addEventListener("click", () => execute(button.dataset.cmd));
+}
+
+document.getElementById("closeSelector").addEventListener("click", cancelSelector);
+document.getElementById("customDemo").addEventListener("click", () => {
+  if (selectorOpen) closeSelector();
+  settingsDoc.subagents = { ...clone(settingsDoc.subagents), defaultModel: "custom/manual-model" };
+  profileSelect.value = "__current__";
+  log("warn", "已模拟手工修改 user settings：内容不再匹配任何档");
+  renderAll();
+});
+document.getElementById("resetDemo").addEventListener("click", () => {
+  if (selectorOpen) closeSelector();
+  settingsDoc = { ...clone(BASE_SETTINGS), subagents: clone(GPT) };
+  backups = [];
+  logEl.replaceChildren();
+  profileSelect.value = "__current__";
+  log("sys", "原型已重置 · gpt 为当前档 · 所有数据仅存在于页面内存");
+  renderAll();
+});
+profileSelect.addEventListener("change", renderJson);
+
+settingsDoc = { ...clone(BASE_SETTINGS), subagents: clone(GPT) };
+backups = [];
+log("sys", "Pi 1.5.0 · pi-subagents 0.85.0 · 离线原型，不读写真实文件");
+log("sys", "当前档 gpt · 档目录 ~/.pi/agent/subagent-profiles (user)");
+log("info", "输入 /subprofile 打开选择器，或 /subprofile list 查看档；输入 /subprofile kim 后按 Tab 可补全");
+renderAll();
+</script>
+</body>
+</html>
