@@ -9,9 +9,10 @@ test("up / down（ANSI 与应用光标模式）", () => {
   assert.equal(parseKey("\x1bOB"), "down");
 });
 
-test("enter", () => {
+test("enter / backspace", () => {
   assert.equal(parseKey("\r"), "enter");
   assert.equal(parseKey("\n"), "enter");
+  assert.equal(parseKey("\x7f"), "backspace");
 });
 
 test("escape / ctrl+c", () => {

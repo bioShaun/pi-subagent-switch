@@ -26,7 +26,9 @@ export interface RoleEditorDeps {
   readonly rows: readonly RoleRow[];
   readonly touched: ReadonlySet<string>;
   readonly title?: string;
+  readonly initialCursor?: number;
   readonly theme: RoleEditorTheme;
+  readonly onCursorChange?: (cursor: number) => void;
   readonly onDone: (action: RoleEditorAction) => void;
 }
 
@@ -182,8 +184,8 @@ type FlatItem =
 
 /**
  * 角色配置面板（ctx.ui.custom 组件）：批量行 + defaultModel 与模板全部角色行，
- * 每行独立 model/thinking 单元格；Enter 产生 pick/batch/next 动作（选择交给宿主
- * 原生 select），Esc/Ctrl+C → cancel。仅渲染，不写状态。
+ * 每行独立 model/thinking 单元格；Enter 产生 pick/batch/next 动作（model 打开
+ * 可搜索列表，thinking 交给宿主原生 select），Esc/Ctrl+C → cancel。仅渲染，不写状态。
  */
 export function createRoleEditor(deps: RoleEditorDeps): RoleEditorComponent {
   const { rows, touched, title, theme, onDone } = deps;
@@ -198,9 +200,10 @@ export function createRoleEditor(deps: RoleEditorDeps): RoleEditorComponent {
   items.forEach((it, i) => {
     if (it.kind === "cell") cellIdx.set(touchedKey(it.row, it.field), i);
   });
-  let cursor = 0;
+  let cursor = Math.max(0, Math.min(deps.initialCursor ?? 0, items.length - 1));
   const move = (delta: number): void => {
     cursor = (cursor + delta + items.length) % items.length;
+    deps.onCursorChange?.(cursor);
   };
 
   const KEY_W = 16;

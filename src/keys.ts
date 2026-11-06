@@ -6,6 +6,7 @@ export type KeyId =
   | "enter"
   | "escape"
   | "ctrl+c"
+  | "backspace"
   | "home"
   | "end"
   | "pageup"
@@ -20,6 +21,7 @@ export function parseKey(data: string): KeyId | undefined {
     case "enter":
     case "escape":
     case "ctrl+c":
+    case "backspace":
     case "home":
     case "end":
       return key;

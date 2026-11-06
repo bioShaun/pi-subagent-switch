@@ -180,7 +180,7 @@ test("/subprofile new：向导真实走 input/select/custom，仅创建写入用
   // 会话2：next。
   h.setCustomKeys([
     ["\x1b[B", "\x1b[B", "\x1b[B", "\r"],
-    ["\x1b[B", "\x1b[B", "\x1b[B", "\x1b[B", "\r"],
+    ["\x1b[B", "\r"],
   ]);
   const created = join(userProfiles, "e2e-ext.json");
   try {

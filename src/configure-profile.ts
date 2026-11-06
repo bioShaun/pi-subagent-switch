@@ -21,6 +21,7 @@ import {
   touchedKey,
 } from "./ui/role-editor.ts";
 import type { RoleEditorAction, RoleRow } from "./ui/role-editor.ts";
+import { createSearchableSelect } from "./ui/searchable-select.ts";
 
 export type WizardKind = "new" | "edit";
 export type WizardNotify = (message: string, level: "info" | "warning" | "error") => void;
@@ -98,7 +99,26 @@ function takenNames(deps: ConfigureDeps, set: ProfileSet): Set<string> {
   return taken;
 }
 
-/** 角色配置面板循环：pick/batch 用宿主原生 select，面板本身用 ctx.ui.custom。 */
+function selectModel(
+  ui: WizardUI,
+  title: string,
+  models: readonly string[],
+  current?: string,
+): Promise<string | undefined> {
+  return ui.custom<string | undefined>(
+    (_tui, theme, _kb, done) =>
+      createSearchableSelect({
+        title,
+        options: [...models, REVERT_OPTION],
+        initialValue: current,
+        theme: roleEditorTheme(theme),
+        onDone: done,
+      }),
+    { overlay: true },
+  );
+}
+
+/** 模型用可搜索列表，thinking 用宿主 select；返回面板时保留原光标。 */
 async function editRoles(
   deps: ConfigureDeps,
   title: string,
@@ -108,6 +128,7 @@ async function editRoles(
   const rows = initRoleRows(source);
   const sourceRows = rows.map((r) => ({ ...r }));
   const touched = new Set<string>();
+  let cursor = 0;
   for (;;) {
     const action = await ui.custom<RoleEditorAction>(
       (_tui, theme, _kb, done) =>
@@ -115,7 +136,11 @@ async function editRoles(
           rows,
           touched,
           title,
+          initialCursor: cursor,
           theme: roleEditorTheme(theme),
+          onCursorChange: (next) => {
+            cursor = next;
+          },
           onDone: done,
         }),
       { overlay: false },
@@ -127,10 +152,7 @@ async function editRoles(
         ui.notify("modelRegistry.getAvailable() 无可用模型，无法批量应用", "warning");
         continue;
       }
-      const sel = await ui.select(
-        `批量应用 model 到全部 ${rows.length} 行（Esc 返回不改值）`,
-        [...models, REVERT_OPTION],
-      );
+      const sel = await selectModel(ui, `批量设置 model · ${rows.length} 个配置`, models);
       if (sel === undefined) continue;
       if (sel === REVERT_OPTION) revertAllModels(rows, sourceRows, touched);
       else applyBatchModel(rows, touched, sel);
@@ -142,11 +164,13 @@ async function editRoles(
       ui.notify("modelRegistry.getAvailable() 无可用模型，model 不可选", "warning");
       continue;
     }
-    const options =
+    const sel =
       action.field === "model"
-        ? [...models, REVERT_OPTION]
-        : [...THINKING_LEVELS, REVERT_OPTION];
-    const sel = await ui.select(`${row.key} · ${action.field}（Esc 返回不改值）`, options);
+        ? await selectModel(ui, `${row.key} · model · 当前 ${row.model}`, models, row.model)
+        : await ui.select(`${row.key} · thinking（Esc 返回不改值）`, [
+            ...THINKING_LEVELS,
+            REVERT_OPTION,
+          ]);
     if (sel === undefined) continue;
     if (sel === REVERT_OPTION) {
       revertField(rows, sourceRows, touched, action.row, action.field);

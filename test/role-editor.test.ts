@@ -201,3 +201,21 @@ test("handleInput 忽略未知键；invalidate 空实现", () => {
   assert.equal(done.length, 0);
   c.invalidate();
 });
+
+
+test("重开面板恢复 initialCursor，移动时同步最新位置", () => {
+  const rows = initRoleRows(SRC);
+  const positions: number[] = [];
+  const c = createRoleEditor({
+    rows,
+    touched: new Set(),
+    initialCursor: 5,
+    theme,
+    onCursorChange: (cursor) => positions.push(cursor),
+    onDone: () => {},
+  });
+  assert.equal(c.cursor, 5);
+  c.handleInput("j");
+  assert.equal(c.cursor, 6);
+  assert.deepEqual(positions, [6]);
+});

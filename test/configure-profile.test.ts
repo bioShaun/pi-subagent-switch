@@ -176,15 +176,23 @@ test("新建：自定义档名→模板→三角色不同 model/thinking→创�
     inputs: ["Planner-E2E!"],
     selects: [
       "kimi", // 模板
-      "kimi-coding/k3-256k", // oracle.model
       "xhigh", // oracle.thinking
-      "tcuni-claude/claude-sonnet-5-5", // worker.model
       "low", // worker.thinking
-      "tcuni/gpt-6.1-terra", // scout.model
       "max", // scout.thinking
       "创建并切换",
     ],
-    customKeys: [pick(2), pick(3), pick(4), pick(5), pick(6), pick(7), NEXT],
+    customKeys: [
+      pick(2),
+      ["k3-256k", "\r"],
+      pick(1),
+      pick(1),
+      ["sonnet", "\r"],
+      pick(1),
+      pick(1),
+      ["terra", "\r"],
+      pick(1),
+      pick(1),
+    ],
   });
   const out = await runConfigureWizard("new", h.deps);
   assert.equal(out.status, "created");
@@ -213,10 +221,10 @@ test("新建：自定义档名→模板→三角色不同 model/thinking→创�
   assert.equal(settings.theme, "dark");
   assert.ok(h.notes.some((n) => n.m.includes("已创建") && n.m.includes("planner-e2e")));
   assert.ok(h.notes.some((n) => n.m.includes("已切换到档")));
-  // 档名 input、模板 select、角色 select、finish select 全被真实调用
+  // 模型走可搜索 custom，模板、thinking 与完成方式仍走原生 select
   assert.equal(h.inputsSeen.length, 1);
-  assert.equal(h.selectsSeen.length, 8);
-  assert.ok(h.comps.length >= 7);
+  assert.equal(h.selectsSeen.length, 5);
+  assert.ok(h.comps.length >= 10);
 });
 
 test("新建：非法档名告警后重试；与有效档、损坏档重名自动 -2 后缀", async () => {
@@ -266,7 +274,7 @@ test("新建·仅创建：写档但不动 settings；修改·仅保存：用户�
     userProfiles: { "mine.json": original },
     settings,
     selects: ["mine", "xhigh", "保存并切换"],
-    customKeys: [pick(5), pick(6)], // 行 = dm + oracle + worker → 项 = [batch,dm,o:m,o:t,w:m,w:t,next]
+    customKeys: [pick(5), pick(1)], // worker.thinking → 完成；第二次从保留的 cursor 5 出发
   });
   const out2 = await runConfigureWizard("edit", h2.deps);
   assert.equal(out2.status, "saved");
@@ -288,8 +296,8 @@ test("修改包内档 → 复制到用户根后修改，包内档逐字节不动
   const h = harness({
     pkgProfiles: { "kimi.json": kimiRaw },
     settings: JSON.stringify({ subagents: KIMI }),
-    selects: ["kimi", "tcuni/gpt-6.1-terra", "仅保存"],
-    customKeys: [pick(1), NEXT], // defaultModel:model
+    selects: ["kimi", "仅保存"],
+    customKeys: [pick(1), ["terra", "\r"], pick(7)], // defaultModel:model → 完成
   });
   const out = await runConfigureWizard("edit", h.deps);
   assert.equal(out.status, "saved");
@@ -308,14 +316,16 @@ test("批量应用同一模型→单角色覆盖→恢复原值（批量后仍�
     pkgProfiles: PKG,
     settings: JSON.stringify({ subagents: {} }),
     inputs: ["batch-demo"],
-    selects: [
-      "kimi", // 模板
-      "tcuni/gpt-6.1-terra", // 批量
-      "m/spec", // oracle.model 覆盖
-      REVERT_OPTION, // worker.model 恢复原值
-      "仅创建",
+    selects: ["kimi", "仅创建"],
+    customKeys: [
+      pick(0),
+      ["terra", "\r"],
+      pick(2),
+      ["m/spec", "\r"],
+      pick(2),
+      ["恢复原值", "\r"],
+      pick(4),
     ],
-    customKeys: [pick(0), pick(2), pick(4), NEXT],
   });
   const out = await runConfigureWizard("new", h.deps);
   assert.equal(out.status, "created");
@@ -368,7 +378,7 @@ test("无可用模型：model 选择降级为警告且不挂起；thinking 仍�
     settings: JSON.stringify({ subagents: {} }),
     inputs: ["nomodel"],
     selects: ["kimi", "max", "仅创建"],
-    customKeys: [pick(1), pick(3), NEXT], // defaultModel:model(跳过), oracle:thinking→max
+    customKeys: [pick(1), pick(2), pick(5)], // defaultModel:model(跳过) → oracle:thinking → 完成
     models: [],
   });
   const out = await runConfigureWizard("new", h.deps);
@@ -384,4 +394,19 @@ test("无档可配 → 警告并取消", async () => {
   const out = await runConfigureWizard("new", h.deps);
   assert.equal(out.status, "cancelled");
   assert.ok(h.notes.some((n) => n.l === "warning"));
+});
+
+
+test("从模型搜索 Esc 返回后保留原单元格光标，再次 Esc 取消且零写入", async () => {
+  const original = JSON.stringify(KIMI, null, 2) + "\n";
+  const h = harness({
+    userProfiles: { "mine.json": original },
+    selects: ["mine"],
+    customKeys: [pick(4), [ESC], [ESC]], // worker.model → 搜索返回 → 角色面板取消
+  });
+  const out = await runConfigureWizard("edit", h.deps);
+  assert.equal(out.status, "cancelled");
+  assert.equal(h.comps.length, 3);
+  assert.equal((h.comps[2] as { cursor: number }).cursor, 4);
+  assert.equal(nodeFs.readFileSync(join(h.userDir, "mine.json"), "utf8"), original);
 });
