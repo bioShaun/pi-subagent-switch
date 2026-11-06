@@ -106,10 +106,20 @@ settings）。`docs/prototype.html` 是零依赖、离线可打开的行为与�
 
 ## 真机安装（由用户自行决定并执行）
 
-本插件不会自动执行 `pi install`（它会改 settings 的 `packages`）：
+本插件不会自动执行 `pi install`（它会改 settings 的 `packages`）。从 GitHub 安装：
 
 ```bash
+pi install https://github.com/bioShaun/pi-subagent-switch
 mkdir -p ~/.pi/agent/subagent-profiles
-cp /path/to/pi-subagent-switch/profiles/*.json ~/.pi/agent/subagent-profiles/
-pi install /path/to/pi-subagent-switch
+cp ~/.pi/agent/git/github.com/bioShaun/pi-subagent-switch/profiles/*.json ~/.pi/agent/subagent-profiles/
+```
+
+也可以安装本地源码：`pi install /path/to/pi-subagent-switch`。
+
+### 给 LLM / agent 的一句话
+
+把下面这句直接发给具备终端与文件工具、且被你授权安装扩展的 LLM/agent：
+
+```text
+请先备份我的 ~/.pi/agent/settings.json，再阅读 https://github.com/bioShaun/pi-subagent-switch 的 README，将扩展从该 GitHub 仓库安装到我的 Pi 用户级环境，把 4 个示例档复制到 ~/.pi/agent/subagent-profiles/，并在新 Pi 会话中用 /subprofile list 验证，不要修改项目级配置。
 ```
