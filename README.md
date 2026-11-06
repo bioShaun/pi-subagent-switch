@@ -65,10 +65,10 @@
 
 ### 给 LLM / agent 的配置提示词
 
-把下面这句和具体模型、角色需求一起发给具备文件工具的 LLM/agent：
+把下面这句直接发给具备终端与文件工具的 LLM/agent：
 
 ```text
-请阅读 https://github.com/bioShaun/pi-subagent-switch 的 README 和 ~/.pi/agent/subagent-profiles/gpt.json，根据我接下来给出的模型与角色需求在 ~/.pi/agent/subagent-profiles/ 创建或调整对应 Profile，保持档文件为纯 subagents JSON、所需模型已在 enabledModels 中，完成后用 /subprofile list 验证，不要直接修改 settings.json 或执行安装。
+请阅读 https://github.com/bioShaun/pi-subagent-switch 的 README 和 ~/.pi/agent/subagent-profiles/gpt.json，先让我从 GPT / Kimi / Claude / 本地 / 自定义中选择模型方案并确认新档名，再沿用 gpt 的 8 角色结构在 ~/.pi/agent/subagent-profiles/ 创建对应的纯 subagents JSON（若档已存在先询问我），确认所需模型均在 enabledModels 中后用 /subprofile list 验证，最后执行 /subprofile <档名> 完成切换，不要直接编辑 settings.json 或执行安装。
 ```
 
 ## 写盘安全与备份
