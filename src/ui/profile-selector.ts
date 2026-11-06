@@ -1,4 +1,6 @@
+import { truncateToWidth } from "@earendil-works/pi-tui/dist/utils.js";
 import { parseKey } from "../keys.ts";
+import { framedPanel } from "./frame.ts";
 import type { Profile } from "../profiles.ts";
 import type { CurrentProfile } from "../current-profile.ts";
 
@@ -71,11 +73,7 @@ const ACTIONS: readonly ActionItem[] = [
   { kind: "edit", label: "✎ 修改档", desc: "选档 → 角色配置 → 保存方式" },
 ];
 
-/** 先按可见码点截断纯文本，再套 ANSI，避免截断破坏颜色码。 */
-function truncate(s: string, width: number): string {
-  const chars = [...s];
-  return chars.length <= width ? s : chars.slice(0, width).join("");
-}
+const PANEL_TITLE = "Subagent 配置";
 
 export function createProfileSelector(deps: ProfileSelectorDeps): ProfileSelectorComponent {
   const { profiles, current, theme, onDone } = deps;
@@ -152,13 +150,19 @@ export function createProfileSelector(deps: ProfileSelectorDeps): ProfileSelecto
       // 无缓存
     },
     render(width: number): string[] {
+      const inner = Math.max(0, width - 4); // 框内可用可见宽度
       if (profiles.length === 0) {
-        return [
-          truncate(
-            "未找到档文件：请创建 ~/.pi/agent/subagent-profiles/*.json",
-            width,
-          ),
-        ];
+        return framedPanel({
+          width,
+          title: PANEL_TITLE,
+          theme,
+          lines: [
+            theme.fg(
+              "warning",
+              "未找到档文件：请创建 ~/.pi/agent/subagent-profiles/*.json",
+            ),
+          ],
+        });
       }
       const lines: string[] = [];
       for (let i = 0; i < profiles.length; i++) {
@@ -166,29 +170,37 @@ export function createProfileSelector(deps: ProfileSelectorDeps): ProfileSelecto
         const isCursor = i === cursor;
         const isCurrent = current.matched && p.name === current.name;
         // 仅 cursor 行显示 ▶，其余行用两个空格保持列对齐（两者均为 2 个可见码点），
-        // 使 cursor 移动在 render 输出中产生可见反馈；current 行 ●/bold 语义不变。
+        // 使 cursor 移动在 render 输出中产生可见反馈。
         const prefix = isCursor ? "▶ " : "  ";
-        const cols =
-          `${prefix}${p.name.padEnd(12)}` +
-          `${(p.summary.defaultModel ?? "—").padEnd(22)}` +
-          `${p.summary.overrideCount} overrides`;
-        const plain = `${cols}${isCurrent ? "  ●" : ""}`;
-        const line = truncate(plain, width);
-        lines.push(isCurrent ? theme.bold(line) : line);
+        const countText = `${p.summary.overrideCount} overrides`;
+        const markerText = isCurrent ? "  ●" : "";
+        // 档名/模型列按剩余宽度截断，给 overrides 计数与 ● 标记留位
+        const main = truncateToWidth(
+          `${prefix}${p.name.padEnd(12)}${(p.summary.defaultModel ?? "—").padEnd(22)}`,
+          Math.max(0, inner - countText.length - markerText.length),
+        );
+        const styledMain = isCursor
+          ? theme.fg("accent", theme.bold(main))
+          : theme.fg("text", main);
+        const count = theme.fg("muted", countText);
+        const marker = isCurrent ? theme.fg("success", markerText) : "";
+        lines.push(styledMain + count + marker);
       }
       for (let a = 0; a < ACTIONS.length; a++) {
         const action = ACTIONS[a]!;
         const isCursor = profiles.length + a === cursor;
-        const plain = truncate(
+        const main = truncateToWidth(
           `${isCursor ? "▶ " : "  "}${action.label.padEnd(12)}${action.desc}`,
-          width,
+          inner,
         );
-        lines.push(plain);
+        lines.push(
+          isCursor ? theme.fg("accent", theme.bold(main)) : theme.fg("text", main),
+        );
       }
       lines.push(
-        theme.fg("dim", truncate("↑/↓ 选择 · Enter 确认 · Esc 取消 · n 新建 · e 修改", width)),
+        theme.fg("muted", "↑/↓ 选择 · Enter 确认 · Esc 取消 · n 新建 · e 修改"),
       );
-      return lines;
+      return framedPanel({ width, title: PANEL_TITLE, lines, theme });
     },
   };
 }

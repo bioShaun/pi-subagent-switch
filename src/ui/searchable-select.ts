@@ -1,5 +1,6 @@
 import { parseKey } from "../keys.ts";
 import { keyChunks } from "./profile-selector.ts";
+import { framedPanel } from "./frame.ts";
 import type { SelectorTheme } from "./profile-selector.ts";
 
 export interface SearchableSelectDeps {
@@ -17,11 +18,6 @@ export interface SearchableSelectComponent {
   readonly cursor: number;
   readonly query: string;
   readonly matches: readonly string[];
-}
-
-function truncate(s: string, width: number): string {
-  const chars = [...s];
-  return chars.length <= width ? s : chars.slice(0, Math.max(0, width)).join("");
 }
 
 const MAX_VISIBLE = 8;
@@ -107,14 +103,11 @@ export function createSearchableSelect(
     },
     render(width: number): string[] {
       const lines = [
-        theme.bold(truncate(title, width)),
-        theme.fg(
-          "dim",
-          truncate(`搜索 › ${query || "输入关键字过滤"}  ·  ${matches.length}/${options.length} 项`, width),
-        ),
+        theme.fg("text", `搜索 › ${query || "输入关键字过滤"}`) +
+          theme.fg("muted", `  ·  ${matches.length}/${options.length} 项`),
       ];
       if (matches.length === 0) {
-        lines.push("  没有匹配项，请修改关键字");
+        lines.push(theme.fg("warning", "  没有匹配项，请修改关键字"));
       } else {
         const start = Math.max(
           0,
@@ -123,17 +116,19 @@ export function createSearchableSelect(
         const end = Math.min(start + MAX_VISIBLE, matches.length);
         for (let i = start; i < end; i++) {
           const selected = i === cursor;
-          const line = truncate(`${selected ? "▶ " : "  "}${matches[i]}`, width);
-          lines.push(selected ? theme.bold(line) : line);
+          const line = `${selected ? "▶ " : "  "}${matches[i]}`;
+          lines.push(
+            selected ? theme.fg("accent", theme.bold(line)) : theme.fg("text", line),
+          );
         }
         if (matches.length > MAX_VISIBLE) {
-          lines.push(theme.fg("dim", truncate(`  ${cursor + 1}/${matches.length} · 显示 ${start + 1}–${end}`, width)));
+          lines.push(theme.fg("muted", `  ${cursor + 1}/${matches.length} · 显示 ${start + 1}–${end}`));
         }
       }
       lines.push(
-        theme.fg("dim", truncate("输入过滤 · Backspace 删除 · ↑/↓ 选择 · Enter 确认 · Esc 返回", width)),
+        theme.fg("muted", "输入过滤 · Backspace 删除 · ↑/↓ 选择 · Enter 确认 · Esc 返回"),
       );
-      return lines;
+      return framedPanel({ width, title, lines, theme });
     },
   };
 }

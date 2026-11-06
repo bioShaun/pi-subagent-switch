@@ -1,5 +1,6 @@
 import { parseKey } from "../keys.ts";
 import { keyChunks } from "./profile-selector.ts";
+import { framedPanel, padVisible } from "./frame.ts";
 import type { SubagentsValue } from "../profiles.ts";
 
 export type RoleField = "model" | "thinking";
@@ -171,12 +172,6 @@ export function revertField(
   touched.delete(touchedKey(row, field));
 }
 
-/** 先按可见码点截断纯文本，再套 ANSI，避免截断破坏颜色码。 */
-function truncate(s: string, width: number): string {
-  const chars = [...s];
-  return chars.length <= width ? s : chars.slice(0, width).join("");
-}
-
 type FlatItem =
   | { kind: "batch" }
   | { kind: "cell"; row: number; field: RoleField }
@@ -264,52 +259,61 @@ export function createRoleEditor(deps: RoleEditorDeps): RoleEditorComponent {
       const lines: string[] = [];
       const current = items[cursor];
       lines.push(
-        theme.fg(
-          "dim",
-          truncate(`${title ?? "角色配置"} · 每行独立选择 model / thinking；* = 本次改动`, width),
-        ),
+        theme.fg("muted", "每行独立选择 model / thinking；* = 本次改动"),
       );
       const batchFocused = current?.kind === "batch";
+      const batchText = `${batchFocused ? "▶ " : "· "}批量应用同一模型到全部行（可选快捷，之后仍可逐行覆盖）`;
       lines.push(
-        truncate(
-          `${batchFocused ? "▶ " : "· "}批量应用同一模型到全部行（可选快捷，之后仍可逐行覆盖）`,
-          width,
-        ),
+        batchFocused
+          ? theme.fg("accent", theme.bold(batchText))
+          : theme.fg("text", batchText),
       );
       lines.push(
         theme.fg(
-          "dim",
-          truncate(`  ${"角色".padEnd(KEY_W)}${"model".padEnd(MODEL_W)}${"thinking".padEnd(THINK_W)}`, width),
+          "muted",
+          `  ${"角色".padEnd(KEY_W)}${"model".padEnd(MODEL_W)}${"thinking".padEnd(THINK_W)}`,
         ),
       );
       rows.forEach((row, ri) => {
         const mFocused = cursor === cellIdx.get(touchedKey(ri, "model"));
         const tFocused = cursor === cellIdx.get(touchedKey(ri, "thinking"));
-        const mCell =
-          `${mFocused ? "▶ " : "  "}${row.model}` +
-          (touched.has(touchedKey(ri, "model")) ? "*" : "");
-        const tCell =
+        const cell = (
+          focused: boolean,
+          value: string,
+          isTouched: boolean,
+          colWidth: number,
+        ): string => {
+          const text = `${focused ? "▶ " : "  "}${value}`;
+          const styled = focused
+            ? theme.fg("accent", theme.bold(text))
+            : theme.fg("text", text);
+          // * 紧跟在值后（warning 色），其余列宽补空格
+          const marked = styled + (isTouched ? theme.fg("warning", "*") : "");
+          return padVisible(marked, colWidth);
+        };
+        const mSeg = cell(mFocused, row.model, touched.has(touchedKey(ri, "model")), MODEL_W);
+        const tSeg =
           row.thinking === null
-            ? "  —"
-            : `${tFocused ? "▶ " : "  "}${row.thinking}` +
-              (touched.has(touchedKey(ri, "thinking")) ? "*" : "");
-        const line = truncate(
-          `· ${row.key.padEnd(KEY_W)}${mCell.padEnd(MODEL_W)}${tCell.padEnd(THINK_W)}`,
-          width,
-        );
-        lines.push(mFocused || tFocused ? theme.bold(line) : line);
+            ? theme.fg("text", "  —")
+            : cell(tFocused, row.thinking, touched.has(touchedKey(ri, "thinking")), THINK_W);
+        lines.push(theme.fg("text", `· ${row.key.padEnd(KEY_W)}`) + mSeg + tSeg);
       });
       const nextFocused = current?.kind === "next";
+      const nextText = `${nextFocused ? "▶ " : "· "}完成角色配置，继续 →`;
       lines.push(
-        truncate(`${nextFocused ? "▶ " : "· "}完成角色配置，继续 →`, width),
+        nextFocused
+          ? theme.fg("accent", theme.bold(nextText))
+          : theme.fg("text", nextText),
       );
       lines.push(
-        theme.fg(
-          "dim",
-          truncate("↑/↓ 或 j/k 移动 · Enter 选择/继续 · Esc 取消（零改动）", width),
-        ),
+        theme.fg("muted", "↑/↓ 或 j/k 移动 · Enter 选择/继续 · Esc 取消（零改动）"),
       );
-      return lines;
+      return framedPanel({
+        width,
+        title: title ?? "角色配置",
+        lines,
+        theme,
+      });
     },
   };
 }

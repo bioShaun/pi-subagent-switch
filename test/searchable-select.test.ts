@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { visibleWidth } from "@earendil-works/pi-tui/dist/utils.js";
 import { createSearchableSelect } from "../src/ui/searchable-select.ts";
 
 const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
@@ -72,5 +73,25 @@ test("长列表滚动显示匹配位置，窄终端每行不超宽", () => {
   const lines = c.render(40);
   assert.ok(lines.some((line) => line.includes("9/20")));
   assert.ok(lines.some((line) => line.includes("显示")));
-  for (const line of lines) assert.ok([...line].length <= 40, JSON.stringify(line));
+  for (const line of lines) assert.ok(visibleWidth(line) <= 40, JSON.stringify(line));
+});
+
+test("边框+标题入上边框；选中项 accent+bold，无匹配 warning，提示 muted", () => {
+  const FG: Record<string, string> = { accent: "36", text: "37", muted: "90", warning: "33" };
+  const marked = {
+    fg: (c: string, t: string) => `\x1b[${FG[c] ?? "39"}m${t}\x1b[39m`,
+    bold: (t: string) => `\x1b[1m${t}\x1b[22m`,
+  };
+  const c = createSearchableSelect({ title: "worker · model", options: OPTIONS, theme: marked, onDone: () => {} });
+  const lines = c.render(80);
+  assert.ok(lines[0]!.startsWith("\x1b[36m") && lines[0]!.includes("\x1b[1mworker · model"), lines[0]);
+  assert.ok(lines[lines.length - 1]!.startsWith("\x1b[36m"), lines[lines.length - 1]);
+  const selLine = lines.find((l) => l.includes("▶"))!;
+  assert.ok(selLine.includes("\x1b[36m") && selLine.includes("\x1b[1m"), selLine);
+  assert.ok(lines.some((l) => l.includes("\x1b[37m")), "未选中项应 text");
+  assert.ok(lines.some((l) => l.includes("\x1b[90m") && l.includes("Esc")), "快捷键应 muted");
+  // 无匹配 → warning
+  const c2 = createSearchableSelect({ title: "t", options: OPTIONS, theme: marked, onDone: () => {} });
+  c2.handleInput("zzz");
+  assert.ok(c2.render(60).some((l) => l.includes("\x1b[33m") && l.includes("没有匹配项")));
 });

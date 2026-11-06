@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { visibleWidth } from "@earendil-works/pi-tui/dist/utils.js";
 import {
   applyBatchModel,
   buildValue,
@@ -94,10 +95,14 @@ test("Enter 分发：批量→batch、单元格→pick、完成行→next；Esc/
   assert.deepEqual(done4, [{ type: "cancel" }]);
 });
 
-test("render：表头/行/单元格对齐，cursor ▶，改动 *，defaultModel thinking 为 —，提示行 dim", () => {
+test("render：边框+标题入上边框，cursor ▶+accent+bold，改动 * 为 warning，提示行 muted", () => {
   const rows = initRoleRows(SRC);
   const touched = new Set([touchedKey(1, "model")]);
-  const marked = { fg: (c: string, t: string) => `[${c}]${t}`, bold: (t: string) => `<B>${t}</B>` };
+  const FG: Record<string, string> = { accent: "36", text: "37", muted: "90", warning: "33" };
+  const marked = {
+    fg: (c: string, t: string) => `\x1b[${FG[c] ?? "39"}m${t}\x1b[39m`,
+    bold: (t: string) => `\x1b[1m${t}\x1b[22m`,
+  };
   const c = createRoleEditor({ rows, touched, title: "角色配置 · kimi", theme: marked, onDone: () => {} });
   const lines = c.render(80);
   const joined = lines.join("\n");
@@ -106,31 +111,38 @@ test("render：表头/行/单元格对齐，cursor ▶，改动 *，defaultModel
   assert.ok(joined.includes("defaultModel"));
   assert.ok(joined.includes("oracle"));
   assert.ok(joined.includes("完成角色配置"));
-  // cursor 0 = 批量行 → ▶
-  assert.ok(lines.some((l) => l.startsWith("▶ ")));
-  // 改动标记：oracle model 单元格 touched → *
+  // 边框：标题 accent+bold 嵌入上边框，末行 accent ╰
+  assert.ok(lines[0]!.startsWith("\x1b[36m") && lines[0]!.includes("\x1b[1m角色配置 · kimi"), lines[0]);
+  assert.ok(lines[lines.length - 1]!.startsWith("\x1b[36m"), lines[lines.length - 1]);
+  // cursor 0 = 批量行 → ▶ + accent + bold
+  const batchLine = lines.find((l) => l.includes("批量应用同一模型"))!;
+  assert.ok(batchLine.includes("▶ "), `批量行应有 ▶：${JSON.stringify(batchLine)}`);
+  assert.ok(batchLine.includes("\x1b[36m") && batchLine.includes("\x1b[1m"), batchLine);
+  // 改动标记：oracle model 单元格 touched → warning *
   const oracleLine = lines.find((l) => l.includes("oracle"))!;
-  assert.ok(oracleLine.includes("m/o*") || oracleLine.includes("m/o *"), `oracle 行应有改动标记：${JSON.stringify(oracleLine)}`);
+  assert.match(oracleLine, /m\/o.*\x1b\[33m\*/, `oracle 行应有 warning 改动标记：${JSON.stringify(oracleLine)}`);
   // defaultModel 行 thinking 显示 —
   const dmLine = lines.find((l) => l.includes("defaultModel"))!;
   assert.ok(dmLine.includes("—"), `defaultModel 行 thinking 应为 —：${JSON.stringify(dmLine)}`);
-  // dim 提示行
-  assert.ok(lines[lines.length - 1]!.includes("[dim]"));
-  // 移动 cursor 到 oracle model → 该行 bold + ▶
+  // 快捷键提示 muted（在下边框上一行）
+  const hintLine = lines.find((l) => l.includes("Esc"))!;
+  assert.ok(hintLine.includes("\x1b[90m"), hintLine);
+  // 移动 cursor 到 oracle model → 该单元格 accent + bold + ▶
   const c2 = createRoleEditor({ rows, touched, title: "t", theme: marked, onDone: () => {} });
   c2.handleInput("\x1b[B");
   c2.handleInput("\x1b[B");
   const moved = c2.render(80);
   const oLine = moved.find((l) => l.includes("oracle"))!;
   assert.ok(oLine.includes("▶"), "cursor 单元格行应有 ▶");
-  assert.match(oLine, /<B>/, "cursor 行应 bold");
+  assert.ok(oLine.includes("\x1b[1m"), "cursor 单元格应 bold");
+  assert.ok(oLine.includes("\x1b[36m"), "cursor 单元格应 accent");
 });
 
-test("render(28) 每行可见字符 ≤ 28", () => {
+test("render(28) 每行可见宽度 ≤ 28", () => {
   const rows = initRoleRows(SRC);
   const c = mkEditor(rows, new Set([touchedKey(2, "thinking")]), []);
   for (const l of c.render(28)) {
-    assert.ok([...l].length <= 28, `too wide: ${JSON.stringify(l)}`);
+    assert.ok(visibleWidth(l) <= 28, `too wide: ${JSON.stringify(l)}`);
   }
 });
 
