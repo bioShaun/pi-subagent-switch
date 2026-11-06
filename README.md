@@ -63,6 +63,14 @@
 原样保留），只换 `defaultModel` / `model` / `thinking`。
 示例档里的 `subagentOnlyExtensions` 是**本机绝对路径**，跨机器使用需自行修改。
 
+### 给 LLM / agent 的配置提示词
+
+把下面这句和具体模型、角色需求一起发给具备文件工具的 LLM/agent：
+
+```text
+请阅读 https://github.com/bioShaun/pi-subagent-switch 的 README 和 ~/.pi/agent/subagent-profiles/gpt.json，根据我接下来给出的模型与角色需求在 ~/.pi/agent/subagent-profiles/ 创建或调整对应 Profile，保持档文件为纯 subagents JSON、所需模型已在 enabledModels 中，完成后用 /subprofile list 验证，不要直接修改 settings.json 或执行安装。
+```
+
 ## 写盘安全与备份
 
 切换 = 找到档 → 校验 → 读 settings → 若当前 `subagents` 已等于目标档则**不写盘、不
@@ -115,11 +123,3 @@ cp ~/.pi/agent/git/github.com/bioShaun/pi-subagent-switch/profiles/*.json ~/.pi/
 ```
 
 也可以安装本地源码：`pi install /path/to/pi-subagent-switch`。
-
-### 给 LLM / agent 的一句话
-
-把下面这句直接发给具备终端与文件工具、且被你授权安装扩展的 LLM/agent：
-
-```text
-请先备份我的 ~/.pi/agent/settings.json，再阅读 https://github.com/bioShaun/pi-subagent-switch 的 README，将扩展从该 GitHub 仓库安装到我的 Pi 用户级环境，把 4 个示例档复制到 ~/.pi/agent/subagent-profiles/，并在新 Pi 会话中用 /subprofile list 验证，不要修改项目级配置。
-```
