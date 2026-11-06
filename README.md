@@ -68,7 +68,7 @@
 把下面这句直接发给具备终端与文件工具的 LLM/agent：
 
 ```text
-请阅读 https://github.com/bioShaun/pi-subagent-switch 的 README 和 ~/.pi/agent/subagent-profiles/gpt.json，先让我从 GPT / Kimi / Claude / 本地 / 自定义中选择模型方案并确认新档名，再沿用 gpt 的 8 角色结构在 ~/.pi/agent/subagent-profiles/ 创建对应的纯 subagents JSON（若档已存在先询问我），确认所需模型均在 enabledModels 中后用 /subprofile list 验证，最后执行 /subprofile <档名> 完成切换，不要直接编辑 settings.json 或执行安装。
+请阅读 https://github.com/bioShaun/pi-subagent-switch 的 README、~/.pi/agent/subagent-profiles/gpt.json 和 settings.json 的 enabledModels，先按 provider 分组列出实际可用的模型方案（保留自定义输入）让我选择并确认新档名，再沿用 gpt 的 8 角色结构在 ~/.pi/agent/subagent-profiles/ 创建对应的纯 subagents JSON（若档已存在先询问我），用 /subprofile list 验证后执行 /subprofile <档名> 完成切换，不要直接编辑 settings.json 或执行安装。
 ```
 
 ## 写盘安全与备份
