@@ -1,6 +1,6 @@
 {
   "name": "pi-subagent-switch",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Pi extension: switch the whole pi-subagents `subagents` block from hand-written profile files",
   "type": "module",
   "license": "MIT",

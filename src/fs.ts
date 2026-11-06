@@ -13,6 +13,8 @@ export interface FsLike {
   unlinkSync(path: string): void;
   statSync(path: string): { mode: number };
   readdirSync(path: string): string[];
+  /** 可选：仅配置向导在「用户档目录缺失」时用到；无此方法且目录缺失 → 写档报错。 */
+  mkdirSync?(path: string, options?: { recursive?: boolean; mode?: number }): void;
 }
 
 /** "YYYYMMDD-HHmmss"（本地时区）。 */

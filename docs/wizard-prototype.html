@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>pi-subagent-switch · Profile 配置向导原型</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --surface: #11161d;
+    --raised: #161d26;
+    --active: #1b2c3d;
+    --border: #28313c;
+    --border-strong: #3a4756;
+    --fg: #dce4ed;
+    --muted: #8996a6;
+    --faint: #5e6b7a;
+    --accent: #6cb6ff;
+    --green: #56d38a;
+    --yellow: #e3b341;
+    --red: #ff7b72;
+    --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-width: 0; }
+  body {
+    background: radial-gradient(1200px 620px at 18% -12%, #15202b 0%, var(--bg) 62%) no-repeat, var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+  #app {
+    width: min(1180px, 100%);
+    margin: 0 auto;
+    padding: 20px 18px 30px;
+    min-width: 0;
+  }
+  .hdr { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .logo {
+    width: 36px; height: 36px; flex: 0 0 36px;
+    display: grid; grid-template-columns: repeat(2, 7px); grid-template-rows: repeat(2, 7px);
+    place-content: center; gap: 4px;
+    border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface);
+  }
+  .logo i { width: 7px; height: 7px; border-radius: 2px; background: var(--faint); }
+  .logo i:first-child { background: var(--accent); }
+  .brand h1 { margin: 0; font-size: 16px; letter-spacing: .01em; }
+  .brand p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+  .hdr-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .badge-static {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px;
+    color: var(--muted); font-size: 11px; white-space: nowrap;
+  }
+  .badge-static b { color: var(--yellow); font-weight: 600; }
+  .btn {
+    padding: 8px 13px; border: 1px solid var(--border-strong); border-radius: 9px;
+    background: var(--raised); color: var(--fg); font: inherit; cursor: pointer;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  .btn:hover { background: var(--active); border-color: var(--accent); }
+  .btn:focus-visible, [role="button"]:focus-visible, .name-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn.ghost { background: transparent; }
+
+  .statusbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-top: 14px; padding: 10px 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+  }
+  .statusbar .k { color: var(--faint); font-size: 11px; }
+  .statusbar .v { color: var(--fg); }
+  .statusbar .v b { color: var(--green); }
+  .statusbar .sep { width: 1px; height: 16px; background: var(--border); }
+  .statusbar .note { color: var(--faint); font-size: 11px; margin-left: auto; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; min-width: 0;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+  .card .lead { margin: 0 0 12px; color: var(--faint); font-size: 11px; }
+
+  .row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    width: 100%; min-width: 0; margin-bottom: 8px; padding: 10px 11px;
+    background: var(--raised); border: 1px solid var(--border); border-radius: 9px;
+    cursor: pointer; color: inherit; font: inherit; text-align: left;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  .row:hover { background: #1a2431; }
+  .row.cursor { background: var(--active); border-color: var(--accent); }
+  .row .mark { flex: 0 0 16px; color: var(--accent); text-align: center; }
+  .row .name { flex: 1 1 120px; min-width: 0; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .desc { flex: 1 1 230px; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+  .tag { padding: 2px 7px; border-radius: 6px; font-size: 10px; border: 1px solid var(--border-strong); color: var(--muted); white-space: nowrap; }
+  .tag.user { color: var(--accent); border-color: #35597d; }
+  .tag.pkg { color: var(--yellow); border-color: #6b5a2e; }
+  .tag.cur { color: var(--green); border-color: #2f6b48; }
+
+  .action-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .action-row .row { margin-bottom: 0; flex: 1 1 210px; justify-content: flex-start; }
+  .action-row .row .name { flex: 0 0 auto; font-size: 13px; }
+
+  .stepper { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .step { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--faint); font-size: 11px; white-space: nowrap; }
+  .step.done { color: var(--green); border-color: #2f6b48; }
+  .step.cur { color: var(--accent); border-color: var(--accent); background: var(--active); }
+  .wizard-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .wizard-head h2 { margin: 0; font-size: 14px; color: var(--fg); text-transform: none; letter-spacing: 0; }
+  .wizard-head .hint { color: var(--faint); font-size: 11px; }
+  .wizard-foot { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .wizard-foot .row { margin-bottom: 0; flex: 1 1 190px; }
+  .wizard-foot .row .name { flex: 0 0 auto; font-size: 12px; }
+
+  /* 档名：全原型唯一的文本输入字段 */
+  .name-box { padding: 12px; background: var(--raised); border: 1px solid var(--border); border-radius: 9px; margin-bottom: 12px; }
+  .name-label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .name-input {
+    width: 100%; min-width: 0; padding: 10px 12px;
+    background: #0d1319; border: 1px solid var(--border-strong); border-radius: 8px;
+    color: var(--fg); font: inherit;
+  }
+  .name-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .name-hint { margin: 8px 0 0; color: var(--faint); font-size: 11px; overflow-wrap: anywhere; }
+
+  /* 角色配置面板 */
+  .batch-line { margin-bottom: 10px; }
+  .batch-line .row { margin-bottom: 0; border-style: dashed; }
+  .role-table { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .role-head, .role-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; min-width: 0; }
+  .role-head { background: var(--raised); color: var(--faint); font-size: 10px; letter-spacing: .05em; }
+  .role-line { border-top: 1px solid var(--border); }
+  .rkey { flex: 0 0 132px; min-width: 0; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rkey b { color: var(--accent); font-weight: 600; }
+  .hcell { flex: 1 1 170px; min-width: 0; }
+  .hcell.thinking { flex: 0 1 96px; }
+  .cell {
+    flex: 1 1 170px; min-width: 0; padding: 7px 9px;
+    background: var(--raised); border: 1px solid var(--border); border-radius: 7px;
+    cursor: pointer; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cell.thinking { flex: 0 1 96px; }
+  .cell:hover { border-color: var(--accent); }
+  .cell.cursor { border-color: var(--accent); background: var(--active); color: var(--fg); }
+  .cell.changed { color: var(--yellow); border-color: #6b5a2e; }
+  .cell-na { flex: 0 1 96px; min-width: 0; text-align: center; color: var(--faint); font-size: 11px; }
+  .chg-tag { color: var(--yellow); font-size: 10px; }
+
+  .preview { margin: 0; padding: 10px; background: #0d1319; border: 1px solid var(--border); border-radius: 9px;
+    color: #b9c8d8; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 300px; overflow: auto; }
+  .kv { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px dashed var(--border); min-width: 0; }
+  .kv .k { flex: 0 0 84px; color: var(--faint); }
+  .kv .v { flex: 1 1 auto; min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
+  .chg-list { margin: 10px 0 0; padding: 0; list-style: none; }
+  .chg-list li { padding: 4px 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+  .chg-list .from { color: var(--faint); }
+  .chg-list .to { color: var(--yellow); }
+
+  .feedback { margin-top: 14px; padding: 10px 14px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
+  .feedback.info { color: var(--muted); }
+  .feedback.ok { color: var(--green); border-color: #2f6b48; }
+  .feedback.warn { color: var(--yellow); border-color: #6b5a2e; }
+
+  .log { margin-top: 14px; }
+  .logline { padding: 7px 11px; margin-bottom: 6px; border-left: 3px solid var(--border-strong); background: var(--surface); border-radius: 0 8px 8px 0; color: var(--muted); font-size: 11px; }
+  .logline.ok { border-left-color: var(--green); color: #bfe6cf; }
+  .logline.info { border-left-color: var(--accent); color: #c3d9f2; }
+  .logline.warn { border-left-color: var(--yellow); color: #e9d8a8; }
+
+  .hintbar { margin-top: 16px; display: flex; gap: 8px 16px; flex-wrap: wrap; color: var(--faint); font-size: 11px; }
+  kbd { padding: 1px 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; background: var(--raised); color: var(--muted); font: inherit; }
+
+  @media (max-width: 780px) {
+    .split { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 560px) {
+    #app { padding: 12px 10px 22px; }
+    body { font-size: 12px; }
+    .brand h1 { font-size: 14px; }
+    .statusbar { padding: 8px 10px; gap: 8px; }
+    .statusbar .note { margin-left: 0; width: 100%; }
+    .card { padding: 10px; }
+    .row { padding: 9px; gap: 8px; }
+    .row .desc { flex: 1 1 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+    .row .name { flex: 1 1 100%; white-space: normal; overflow: visible; }
+    .action-row .row { flex: 1 1 100%; }
+    .role-head { display: none; }
+    .rkey { flex: 1 1 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+    .cell, .cell.thinking, .cell-na { flex: 1 1 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+    .kv .k { flex: 0 0 72px; }
+    .preview { max-height: 240px; font-size: 10px; }
+    .hintbar { gap: 6px 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app" role="application" aria-label="Profile 配置向导原型"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- 只读示例数据（全部内存模拟，不访问任何真实文件/网络） ---------- */
+  var ROLES = ["oracle", "evidence-auditor", "delegate", "reviewer", "worker", "researcher", "scout", "planner-validator"];
+  var MODELS = [
+    { id: "tcuni/gpt-6.1-terra", label: "GPT-6.1 Terra · 均衡通用" },
+    { id: "kimi-coding/k3.1-pro", label: "Kimi K3.1 Pro · 编码主力" },
+    { id: "kimi-coding/k3-256k-long-context-preview-2026-11-06-extended-build", label: "Kimi K3 256K 长上下文预览版（超长名称，验证截断/换行）" },
+    { id: "tcuni-claude/claude-opus-5-5-thinking-max-extended-2026-release-candidate", label: "Claude Opus 5.5 深度推理（超长名称，验证截断/换行）" },
+    { id: "tcuni-claude/claude-sonnet-5-5", label: "Claude Sonnet 5.5 · 日常" },
+    { id: "qwen-local/qwen3.8-27b", label: "Qwen 3.8 27B · 本机" },
+    { id: "tcuni/gpt-6-luna", label: "GPT-6 Luna · 轻量" }
+  ];
+  var LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+  var STEP_LABEL = {
+    name: "档名", template: "模板", profile: "选择档", roles: "角色配置", finish: "完成方式"
+  };
+
+  function mkProfile(name, model, thinking, source) {
+    var agentOverrides = {};
+    for (var i = 0; i < ROLES.length; i++) {
+      agentOverrides[ROLES[i]] = { model: model, thinking: thinking };
+    }
+    return { name: name, source: source, value: { defaultModel: model, agentOverrides: agentOverrides } };
+  }
+  function initialProfiles() {
+    return [
+      mkProfile("gpt", "tcuni/gpt-6.1-terra", "medium", "package"),
+      mkProfile("kimi", "kimi-coding/k3.1-pro", "medium", "package"),
+      mkProfile("claude", "tcuni-claude/claude-opus-5-5", "high", "package"),
+      mkProfile("local", "qwen-local/qwen3.8-27b", "off", "package")
+    ];
+  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function findProfile(name) {
+    return state.profiles.find(function (p) { return p.name === name; }) || state.profiles[0];
+  }
+  function resolveName(raw, profiles) {
+    var s = String(raw || "").trim().toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-").replace(/-{2,}/g, "-").replace(/^[-.]+|[-.]+$/g, "");
+    if (!s) return { ok: false, msg: "档名不能为空" };
+    var name = s, n = 2, changed = false;
+    while (profiles.some(function (p) { return p.name === name; })) { name = s + "-" + n; n++; changed = true; }
+    return { ok: true, name: name, changed: changed };
+  }
+
+  /* ---------- 状态：向导期间绝不改动 profiles/current，只在 commit 写入 ---------- */
+  var state = {
+    profiles: initialProfiles(),
+    current: "kimi",
+    view: "main",
+    cursor: 0,
+    wizard: null,
+    log: [],
+    feedback: { level: "info", text: "就绪 · ↑/↓ 或 j/k 移动、Enter 确认；n 新建、e 修改、r 重置。" }
+  };
+
+  function mainItems() {
+    var arr = state.profiles.map(function (p) { return { kind: "profile", val: p.name }; });
+    arr.push({ kind: "action", val: "new" });
+    arr.push({ kind: "action", val: "edit" });
+    return arr;
+  }
+
+  /* 当前步中可聚焦/可点击的扁平条目；键盘 cursor 与鼠标共用同一套 act/val */
+  function stepItems(w) {
+    var step = w.steps[w.stepIdx];
+    if (w.picker) {
+      var list = w.picker.field === "model" ? MODELS : LEVELS;
+      var items = list.map(function (m, i) {
+        var val = w.picker.field === "model" ? m.id : m;
+        return { act: "pick", val: val, idx: i,
+          label: w.picker.field === "model" ? m.id : m,
+          desc: w.picker.field === "model" ? m.label : ("思考级别 " + m) };
+      });
+      items.push({ act: "revert", val: "revert", idx: items.length,
+        label: "↩ 恢复原值（移除本次改动）", desc: "该字段保持模板/原值，不计入改动" });
+      return items;
+    }
+    if (step === "name") {
+      return [{ act: "name-next", val: "next", idx: 0, label: "使用此名称，继续 →", desc: "校验格式并处理重名" }];
+    }
+    if (step === "template" || step === "profile") {
+      return state.profiles.map(function (p, i) {
+        return { act: "opt", val: p.name, idx: i, label: p.name,
+          desc: step === "template" ? ("以该档结构为模板 · " + p.value.defaultModel)
+                : (p.source === "package" ? "包内档（只读，保存时复制到用户目录）" : "用户档 · 可直接写回") };
+      });
+    }
+    if (step === "roles") {
+      var out = [];
+      out.push({ act: "batch", val: "batch", idx: out.length,
+        label: "批量应用同一模型到全部行", desc: "可选快捷操作，之后仍可逐行覆盖" });
+      w.roleRows.forEach(function (row, ri) {
+        out.push({ act: "cell", val: ri + ":model", idx: out.length, label: row.model, desc: row.key + " · model" });
+        if (row.thinking !== null) {
+          out.push({ act: "cell", val: ri + ":thinking", idx: out.length, label: row.thinking, desc: row.key + " · thinking" });
+        }
+      });
+      out.push({ act: "roles-next", val: "next", idx: out.length,
+        label: "完成角色配置，继续 →", desc: "进入创建/保存方式" });
+      return out;
+    }
+    if (step === "finish") {
+      var opts = w.kind === "new"
+        ? [ {val:"create-switch", label:"创建并切换", desc:"写入用户档并立即设为当前档"},
+            {val:"create-only", label:"仅创建", desc:"只写入用户档，不改变当前档"},
+            {val:"cancel", label:"取消", desc:"放弃全部选择，不产生任何改动"} ]
+        : [ {val:"save-switch", label:"保存并切换", desc:"保存并立即设为当前档"},
+            {val:"save-only", label:"仅保存", desc:"只保存，不改变当前档"},
+            {val:"cancel", label:"取消", desc:"放弃全部选择，不产生任何改动"} ];
+      return opts.map(function (o, i) { return { act:"opt", val:o.val, idx:i, label:o.label, desc:o.desc }; });
+    }
+    return [];
+  }
+
+  function sourceField(w, ri, field) {
+    var src = findProfile(w.srcName);
+    var row = w.roleRows[ri];
+    if (!row) return "";
+    if (row.key === "defaultModel") return field === "model" ? src.value.defaultModel : "";
+    var ov = src.value.agentOverrides[row.key] || {};
+    return field === "model" ? (ov.model || src.value.defaultModel) : (ov.thinking || "medium");
+  }
+  function initRoleRows(w) {
+    var src = findProfile(w.kind === "new" ? w.choices.template : w.choices.profile);
+    w.srcName = src.name;
+    var rows = [{ key: "defaultModel", model: src.value.defaultModel, thinking: null }];
+    ROLES.forEach(function (r) {
+      var ov = src.value.agentOverrides[r] || {};
+      rows.push({ key: r, model: ov.model || src.value.defaultModel, thinking: ov.thinking || "medium" });
+    });
+    w.roleRows = rows;
+    w.touched = {};
+    w.picker = null;
+  }
+  /* 只把用户操作过的字段写进结果；其它 JSON 值（tools 等）原样保留 */
+  function buildValue(w) {
+    var v = clone(findProfile(w.srcName).value);
+    Object.keys(w.touched).forEach(function (key) {
+      var parts = key.split(":"), ri = Number(parts[0]), field = parts[1];
+      var row = w.roleRows[ri];
+      if (!row) return;
+      if (row.key === "defaultModel") {
+        if (field === "model") v.defaultModel = row.model;
+      } else {
+        if (!v.agentOverrides[row.key]) v.agentOverrides[row.key] = {};
+        v.agentOverrides[row.key][field] = row[field];
+      }
+    });
+    return v;
+  }
+  function changeList(w) {
+    if (!w.roleRows) return [];
+    var out = [];
+    Object.keys(w.touched).forEach(function (key) {
+      var parts = key.split(":"), ri = Number(parts[0]), field = parts[1];
+      var row = w.roleRows[ri];
+      if (!row) return;
+      out.push({ key: row.key + "." + field, from: sourceField(w, ri, field), to: row[field] });
+    });
+    return out;
+  }
+
+  /* ---------- 状态迁移 ---------- */
+  function openWizard(kind) {
+    state.wizard = {
+      kind: kind,
+      steps: kind === "new" ? ["name", "template", "roles", "finish"] : ["profile", "roles", "finish"],
+      stepIdx: 0,
+      cursor: 0,
+      choices: kind === "new" ? { name: "my-profile" } : {},
+      roleRows: null,
+      touched: {},
+      picker: null,
+      srcName: null,
+      before: clone({ profiles: state.profiles, current: state.current }),
+      returnCursor: state.cursor
+    };
+    state.view = "wizard";
+    state.feedback = { level: "info",
+      text: (kind === "new" ? "新建档" : "修改档") + "向导 · 仅档名用文本输入，模型/思考全部通过选择；任一步取消零改动。" };
+  }
+  function cancel() {
+    var w = state.wizard;
+    if (w) {
+      state.profiles = clone(w.before.profiles);
+      state.current = w.before.current;
+      state.cursor = w.returnCursor;
+    }
+    state.view = "main";
+    state.wizard = null;
+    state.feedback = { level: "warn", text: "已取消，未做任何改动：档列表与当前档保持原样。" };
+  }
+  function goBack() {
+    var w = state.wizard;
+    if (w.picker) {
+      w.picker = null; w.cursor = 0;
+      state.feedback = { level: "info", text: "已关闭选择器，未修改任何值。" };
+      return;
+    }
+    if (w.stepIdx === 0) return;
+    w.stepIdx -= 1; w.cursor = 0;
+    var st = w.steps[w.stepIdx];
+    if (st === "name" || st === "template" || st === "profile") { w.roleRows = null; w.touched = {}; }
+    state.feedback = { level: "info", text: "已返回上一步：" + STEP_LABEL[st] + "（未写入）" };
+  }
+  function nameNext() {
+    var w = state.wizard;
+    var r = resolveName(w.choices.name, state.profiles);
+    if (!r.ok) {
+      state.feedback = { level: "warn", text: "档名校验失败：" + r.msg + "（请修改后重试）" };
+      return;
+    }
+    var normalized = r.name !== String(w.choices.name || "").trim();
+    w.choices.resolvedName = r.name;
+    state.feedback = { level: r.changed ? "warn" : "info",
+      text: "档名已确认：" + r.name + (r.changed ? "（与现有档重名，自动加后缀）" : "") + (normalized ? " · 已按格式规范化" : "") };
+    w.stepIdx += 1; w.cursor = 0;
+  }
+  function selectOption(val) {
+    var w = state.wizard;
+    var step = w.steps[w.stepIdx];
+    w.choices[step] = val;
+    if (step === "finish") { commit(w, val); return; }
+    w.stepIdx += 1; w.cursor = 0;
+    if (w.steps[w.stepIdx] === "roles") initRoleRows(w);
+    state.feedback = { level: "info", text: "已选择 " + STEP_LABEL[step] + "：" + val };
+  }
+  function openPicker(mode, row, field) {
+    var w = state.wizard;
+    w.picker = { mode: mode, row: row, field: field };
+    w.cursor = 0;
+    var target = mode === "batch" ? "全部行" : w.roleRows[row].key;
+    state.feedback = { level: "info", text: "为 " + target + " 选择 " + field + " · Esc 返回不改值" };
+  }
+  function closePicker() {
+    var w = state.wizard;
+    w.picker = null; w.cursor = 0;
+    state.feedback = { level: "info", text: "已关闭选择器，未修改任何值。" };
+  }
+  function applyPick(val) {
+    var w = state.wizard, pk = w.picker;
+    if (pk.mode === "batch") {
+      w.roleRows.forEach(function (row, ri) { row.model = val; w.touched[ri + ":model"] = true; });
+      state.feedback = { level: "ok", text: "已批量应用模型 " + val + " 到全部 " + w.roleRows.length + " 行（仍可逐行覆盖）。" };
+    } else {
+      w.roleRows[pk.row][pk.field] = val;
+      w.touched[pk.row + ":" + pk.field] = true;
+      state.feedback = { level: "info", text: "已设置 " + w.roleRows[pk.row].key + " 的 " + pk.field + " = " + val };
+    }
+    w.picker = null; w.cursor = 0;
+  }
+  function revertPick() {
+    var w = state.wizard, pk = w.picker;
+    if (pk.mode === "batch") {
+      w.roleRows.forEach(function (row, ri) {
+        delete w.touched[ri + ":model"];
+        row.model = sourceField(w, ri, "model");
+      });
+    } else {
+      delete w.touched[pk.row + ":" + pk.field];
+      w.roleRows[pk.row][pk.field] = sourceField(w, pk.row, pk.field);
+    }
+    w.picker = null; w.cursor = 0;
+    state.feedback = { level: "info", text: "已恢复原值：该字段不再计入改动。" };
+  }
+  function rolesNext() {
+    var w = state.wizard;
+    w.picker = null;
+    w.stepIdx += 1; w.cursor = 0;
+    state.feedback = { level: "info", text: "角色配置完成，请选择创建/保存方式（尚未写入）。" };
+  }
+  function commit(w, action) {
+    if (action === "cancel") { cancel(); return; }
+    var isNew = w.kind === "new";
+    var value = buildValue(w);
+    var name = isNew ? w.choices.resolvedName : w.choices.profile;
+    var copied = false;
+    if (isNew) {
+      state.profiles.push({ name: name, source: "user", value: value });
+    } else {
+      var idx = state.profiles.findIndex(function (p) { return p.name === name; });
+      var old = state.profiles[idx];
+      if (old && old.source === "package") copied = true;
+      // 包内档永不写：以同名用户副本覆盖（user 优先于 package）。
+      state.profiles[idx] = { name: name, source: copied ? "user" : (old ? old.source : "user"), value: value };
+    }
+    if (action.indexOf("-switch") !== -1) state.current = name;
+    var changed = Object.keys(w.touched).length;
+    var verb = isNew ? "创建" : "保存";
+    var extra = copied ? "（包内档只读，已复制到用户目录）" : "";
+    var tail = action.indexOf("-switch") !== -1 ? "并切换为当前档" : "，当前档未改变";
+    state.feedback = { level: "ok", text: "已" + verb + "档 " + name + tail + "，共修改 " + changed + " 个字段。" + extra };
+    state.log.unshift({ level: "ok", text: verb + " " + name + " · 字段改动 " + changed + " · " + action + extra });
+    state.view = "main";
+    state.wizard = null;
+    state.cursor = state.profiles.findIndex(function (p) { return p.name === name; });
+  }
+  function switchTo(name) {
+    if (state.current === name) {
+      state.feedback = { level: "info", text: "档 " + name + " 已是当前档，无需切换。" };
+      return;
+    }
+    state.current = name;
+    state.feedback = { level: "ok", text: "已切换到档 " + name + "（下一次启动 subagent 生效，无需 /reload）。" };
+    state.log.unshift({ level: "ok", text: "切换 当前档 → " + name });
+  }
+  function reset() {
+    state = {
+      profiles: initialProfiles(), current: "kimi", view: "main", cursor: 0, wizard: null, log: [],
+      feedback: { level: "info", text: "已重置为初始状态。" }
+    };
+  }
+  function activateMain(i) {
+    var items = mainItems();
+    var it = items[i];
+    if (!it) return;
+    if (it.kind === "profile") switchTo(it.val);
+    else if (it.val === "new") openWizard("new");
+    else if (it.val === "edit") openWizard("edit");
+  }
+  function dispatch(act, val, idx) {
+    if (act === "name-input") return;  // 文本输入由 input 事件处理，不重绘
+    if (act === "item") activateMain(idx);
+    else if (act === "open-new") openWizard("new");
+    else if (act === "open-edit") openWizard("edit");
+    else if (act === "opt") selectOption(val);
+    else if (act === "name-next") nameNext();
+    else if (act === "batch") openPicker("batch", null, "model");
+    else if (act === "cell") { var p = String(val).split(":"); openPicker("cell", Number(p[0]), p[1]); }
+    else if (act === "pick") applyPick(val);
+    else if (act === "revert") revertPick();
+    else if (act === "picker-cancel") closePicker();
+    else if (act === "roles-next") rolesNext();
+    else if (act === "cancel") cancel();
+    else if (act === "back") goBack();
+    else if (act === "reset") reset();
+    render();
+  }
+
+  /* ---------- 渲染 ---------- */
+  function rowHTML(o) {
+    var focus = o.focus === undefined ? o.cursor : o.focus;
+    return '<div class="row' + (o.cursor ? " cursor" : "") + '" role="button" tabindex="0"' +
+      ' data-act="' + esc(o.act) + '" data-val="' + esc(o.val) + '" data-idx="' + o.idx + '"' +
+      (focus ? ' data-focus="1"' : '') + '>' +
+      '<span class="mark">' + (o.cursor ? "▶" : "·") + '</span>' +
+      '<span class="name">' + esc(o.label) + '</span>' +
+      (o.desc !== undefined ? '<span class="desc" title="' + esc(o.desc) + '">' + esc(o.desc) + '</span>' : "") +
+      (o.meta || "") + '</div>';
+  }
+  function tag(t, cls) { return '<span class="tag ' + cls + '">' + esc(t) + "</span>"; }
+
+  function mainHTML() {
+    var rows = "";
+    state.profiles.forEach(function (p, i) {
+      var meta = '<span class="meta">' +
+        (p.name === state.current ? tag("● 当前", "cur") : "") +
+        tag(p.source === "package" ? "包内" : "用户", p.source === "package" ? "pkg" : "user") +
+        tag(Object.keys(p.value.agentOverrides).length + " overrides", "") + '</span>';
+      rows += rowHTML({ act: "item", val: p.name, idx: i, cursor: i === state.cursor,
+        label: p.name, desc: p.value.defaultModel, meta: meta });
+    });
+    var n = state.profiles.length;
+    rows += '<div class="action-row">' +
+      rowHTML({ act: "open-new", val: "new", idx: n, cursor: state.cursor === n,
+        label: "＋ 新建档", desc: "档名 → 模板 → 角色配置 → 创建方式" }) +
+      rowHTML({ act: "open-edit", val: "edit", idx: n + 1, cursor: state.cursor === n + 1,
+        label: "✎ 修改档", desc: "选档 → 角色配置 → 保存方式" }) + '</div>';
+    return '<div class="card"><h2>主面板 · 档</h2>' +
+      '<p class="lead">▶ = 键盘 cursor（↑/↓ 或 j/k 移动，Enter 确认）　● = 当前生效档。两者刻意用不同颜色与列区分。</p>' +
+      rows + '</div>';
+  }
+
+  function nameHTML(w) {
+    var nx = stepItems(w)[0];
+    return '<div class="name-box">' +
+      '<label class="name-label">档名 · 全原型唯一的文本输入字段</label>' +
+      '<input class="name-input" type="text" data-act="name-input" aria-label="档名"' +
+        ' value="' + esc(w.choices.name) + '" maxlength="64" spellcheck="false" autocomplete="off" data-focus="1">' +
+      '<p class="name-hint">默认值 my-profile · 仅允许 a–z 0–9 . _ -（自动小写、替换非法字符）· 与现有档重名自动加 -2/-3 后缀。当前输入：' +
+        esc(w.choices.name) + ' → ' + esc(w.choices.resolvedName || "（未校验）") + '</p>' +
+      '</div>' +
+      rowHTML({ act: "name-next", val: "next", idx: nx.idx, cursor: nx.idx === w.cursor,
+        focus: false, label: nx.label, desc: nx.desc });
+  }
+
+  function rolesHTML(w) {
+    var items = stepItems(w);
+    function it(act, val) { return items.find(function (x) { return x.act === act && x.val === val; }); }
+    function focusOf(x) { return (x && x.idx === w.cursor) ? ' data-focus="1"' : ""; }
+    function markOf(x) { return (x && x.idx === w.cursor) ? "▶" : "·"; }
+    var b = it("batch", "batch");
+    var html = '<p class="lead">每行独立选择 model / thinking；<b>批量</b>只是可选快捷操作，之后仍可逐行覆盖。默认保留模板/原值，仅记录你改动过的单元格（黄色）。</p>';
+    html += '<div class="batch-line"><div class="row' + (b.idx === w.cursor ? " cursor" : "") + '" role="button" tabindex="0"' +
+      ' data-act="batch" data-val="batch" data-idx="' + b.idx + '"' + focusOf(b) + '>' +
+      '<span class="mark">' + markOf(b) + '</span><span class="name">' + esc(b.label) + '</span>' +
+      '<span class="desc" title="' + esc(b.desc) + '">' + esc(b.desc) + '</span></div></div>';
+    html += '<div class="role-table"><div class="role-head">' +
+      '<span class="rkey">字段 / 角色</span><span class="hcell">model（点击选择）</span>' +
+      '<span class="hcell thinking">thinking（点击选择）</span></div>';
+    w.roleRows.forEach(function (row, ri) {
+      var mi = it("cell", ri + ":model");
+      var ti = row.thinking !== null ? it("cell", ri + ":thinking") : null;
+      var mc = !!w.touched[ri + ":model"], tc = !!w.touched[ri + ":thinking"];
+      html += '<div class="role-line">' +
+        '<span class="rkey">' + (row.key === "defaultModel" ? '<b>defaultModel</b>' : esc(row.key)) + '</span>' +
+        '<div class="cell' + (mi.idx === w.cursor ? " cursor" : "") + (mc ? " changed" : "") +
+          '" role="button" tabindex="0" data-act="cell" data-val="' + ri + ':model" data-idx="' + mi.idx + '"' +
+          focusOf(mi) + ' title="' + esc(row.model) + '">' + esc(row.model) + '</div>' +
+        (ti
+          ? '<div class="cell thinking' + (ti.idx === w.cursor ? " cursor" : "") + (tc ? " changed" : "") +
+            '" role="button" tabindex="0" data-act="cell" data-val="' + ri + ':thinking" data-idx="' + ti.idx + '"' +
+            focusOf(ti) + ' title="' + esc(row.thinking) + '">' + esc(row.thinking) + '</div>'
+          : '<span class="cell-na">—（顶层无）</span>') +
+        '</div>';
+    });
+    html += '</div>';
+    var nx = it("roles-next", "next");
+    html += '<div style="margin-top:12px">' + rowHTML({ act: "roles-next", val: "next", idx: nx.idx,
+      cursor: nx.idx === w.cursor, focus: nx.idx === w.cursor, label: nx.label, desc: nx.desc }) + '</div>';
+    return html;
+  }
+
+  function pickerHTML(w) {
+    var items = stepItems(w);
+    var target = w.picker.mode === "batch" ? "全部行" : w.roleRows[w.picker.row].key;
+    var html = '<p class="lead">为 <b>' + esc(target) + '</b> 选择 <b>' + esc(w.picker.field) +
+      '</b> · ↑/↓ 或 j/k 移动，Enter 确认，Esc 返回（不修改）。长模型名截断，鼠标悬停看全文。</p>';
+    items.forEach(function (o, i) {
+      html += rowHTML({ act: o.act, val: o.val, idx: o.idx, cursor: i === w.cursor,
+        focus: i === w.cursor, label: o.label, desc: o.desc });
+    });
+    html += '<div class="wizard-foot"><div class="row" role="button" tabindex="0" data-act="picker-cancel" data-val="cancel">' +
+      '<span class="mark">·</span><span class="name">取消选择（Esc，不改变任何值）</span></div></div>';
+    return html;
+  }
+
+  function optionsHTML(w) {
+    var items = stepItems(w);
+    var html = "";
+    items.forEach(function (o, i) {
+      html += rowHTML({ act: o.act, val: o.val, idx: o.idx, cursor: i === w.cursor,
+        focus: i === w.cursor, label: o.label, desc: o.desc });
+    });
+    return html;
+  }
+
+  function wizardHTML() {
+    var w = state.wizard, step = w.steps[w.stepIdx];
+    var stepper = '<div class="stepper">';
+    w.steps.forEach(function (s, i) {
+      var cls = i < w.stepIdx ? "done" : (i === w.stepIdx ? "cur" : "");
+      stepper += '<span class="step ' + cls + '">' + (i < w.stepIdx ? "✓ " : "") + esc(STEP_LABEL[s]) + '</span>';
+    });
+    stepper += '</div>';
+    var body;
+    if (w.picker) body = pickerHTML(w);
+    else if (step === "name") body = nameHTML(w);
+    else if (step === "roles") body = rolesHTML(w);
+    else body = optionsHTML(w);
+    var foot = '<div class="wizard-foot">' +
+      (w.picker ? "" : '<div class="row" role="button" tabindex="0" data-act="back" data-val="back">' +
+        '<span class="mark">·</span><span class="name">← 上一步</span></div>') +
+      (w.picker ? "" : '<div class="row" role="button" tabindex="0" data-act="cancel" data-val="cancel">' +
+        '<span class="mark">·</span><span class="name">取消向导（Esc，零改动）</span></div>') +
+      '</div>';
+    return '<div class="card"><h2>' + (w.kind === "new" ? "新建档向导" : "修改档向导") + '</h2>' +
+      '<p class="lead">仅档名使用文本输入；模型与思考全部通过选择；任一步取消/返回都不提交写入。</p>' +
+      stepper +
+      '<div class="wizard-head"><h2>第 ' + (w.stepIdx + 1) + ' / ' + w.steps.length + ' 步 · ' + esc(STEP_LABEL[step]) +
+      '</h2><span class="hint">' + (w.picker ? "Esc 关闭选择器" : "↑/↓ 或 j/k · Enter · Esc 取消") + '</span></div>' +
+      body + foot + '</div>';
+  }
+
+  function previewHTML() {
+    var w = state.wizard;
+    var value, title, name;
+    if (w && w.roleRows) {
+      value = buildValue(w);
+      name = w.kind === "new" ? (w.choices.resolvedName || w.choices.name || "(待定)") : w.choices.profile;
+      title = "待写入预览 · 内存模拟";
+    } else if (w) {
+      var base = findProfile(w.choices.template || w.choices.profile || state.current);
+      value = base.value;
+      name = w.kind === "new" ? (w.choices.name || "(待定)") : (w.choices.profile || "—");
+      title = "参考预览（尚未配置）";
+    } else {
+      var p = findProfile(state.current);
+      value = p.value;
+      name = p.name;
+      title = "当前档预览";
+    }
+    var kv = '<div class="kv"><span class="k">档名</span><span class="v">' + esc(name) + '</span></div>' +
+      '<div class="kv"><span class="k">defaultModel</span><span class="v">' + esc(value.defaultModel) + '</span></div>' +
+      '<div class="kv"><span class="k">override 数</span><span class="v">' + Object.keys(value.agentOverrides).length + '</span></div>';
+    Object.keys(value.agentOverrides).forEach(function (r) {
+      var ov = value.agentOverrides[r];
+      kv += '<div class="kv"><span class="k">' + esc(r) + '</span><span class="v">' + esc(ov.model) + ' · ' + esc(ov.thinking) + '</span></div>';
+    });
+    var chg = "";
+    if (w) {
+      var list = changeList(w);
+      chg = '<h2 style="margin-top:14px">修改前后 · 仅用户操作字段 (' + list.length + ')</h2>';
+      if (!list.length) chg += '<div class="logline">未修改任何字段：默认保留模板/原值。</div>';
+      else {
+        chg += '<ul class="chg-list">';
+        list.forEach(function (c) {
+          chg += '<li>' + esc(c.key) + '： <span class="from">' + esc(c.from) + '</span> → <span class="to">' + esc(c.to) + '</span></li>';
+        });
+        chg += '</ul>';
+      }
+    }
+    return '<div class="card"><h2>' + esc(title) + '</h2>' +
+      '<p class="lead">只读预览：展示向导最终会写入的 subagents 值（非真实文件）。</p>' + kv + chg +
+      '<h2 style="margin-top:14px">JSON 预览</h2>' +
+      '<pre class="preview">' + esc(JSON.stringify(value, null, 2)) + '</pre></div>';
+  }
+
+  function viewHTML() {
+    var log = state.log.length
+      ? state.log.map(function (l) { return '<div class="logline ' + l.level + '">' + esc(l.text) + '</div>'; }).join("")
+      : '<div class="logline">暂无操作记录。</div>';
+    return '' +
+      '<div class="hdr">' +
+        '<div class="brand"><div class="logo"><i></i><i></i><i></i><i></i></div>' +
+        '<div><h1>pi-subagent-switch</h1><p>Profile 配置向导 · 交互原型（离线 / 内存模拟）</p></div></div>' +
+        '<div class="hdr-tools">' +
+          '<span class="badge-static">原型 · <b>不读写真实文件</b></span>' +
+          '<button class="btn ghost" data-act="reset" data-val="reset">重置（r）</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="statusbar">' +
+        '<span class="k">状态栏</span><span class="v">subagents: <b>' + esc(state.current) + '</b></span>' +
+        '<span class="sep"></span><span class="k">档数</span><span class="v">' + state.profiles.length + '</span>' +
+        '<span class="sep"></span><span class="k">视图</span><span class="v">' + (state.view === "main" ? "主面板" : "向导") + '</span>' +
+        '<span class="note">模型来自内存模拟的 modelRegistry.getAvailable()</span>' +
+      '</div>' +
+      '<div class="split">' + (state.view === "main" ? mainHTML() : wizardHTML()) + previewHTML() + '</div>' +
+      '<div class="feedback ' + state.feedback.level + '">' + esc(state.feedback.text) + '</div>' +
+      '<div class="log"><h2 style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 8px">操作记录</h2>' + log + '</div>' +
+      '<div class="hintbar">' +
+        '<span><kbd>↑</kbd><kbd>↓</kbd> / <kbd>j</kbd><kbd>k</kbd> 移动</span>' +
+        '<span><kbd>Enter</kbd> 确认 / 打开选择器</span>' +
+        '<span><kbd>Esc</kbd> 取消 / 关闭选择器</span>' +
+        '<span><kbd>n</kbd> 新建</span>' +
+        '<span><kbd>e</kbd> 修改</span>' +
+        '<span><kbd>r</kbd> 重置</span>' +
+        '<span>档名可直接输入；其余全部点击选择</span>' +
+      '</div>';
+  }
+
+  function render() {
+    var app = document.getElementById("app");
+    if (!app) return;
+    app.innerHTML = viewHTML();
+    var f = app.querySelector ? app.querySelector('[data-focus="1"]') : null;
+    if (f && f.focus) f.focus();
+  }
+
+  function onClick(e) {
+    var t = e.target;
+    var node = t && t.closest ? t.closest('[data-act]') : null;
+    if (!node) return;
+    var d = node.dataset || {};
+    dispatch(d.act, d.val, d.idx !== undefined ? Number(d.idx) : undefined);
+  }
+  /* 档名是唯一文本字段：input 事件只更新内存状态，不重绘（避免丢失光标） */
+  function onInput(e) {
+    var t = e.target;
+    if (!t || !t.dataset || t.dataset.act !== "name-input") return;
+    var w = state.wizard;
+    if (!w || w.steps[w.stepIdx] !== "name") return;
+    w.choices.name = t.value;
+  }
+  function moveCursor(delta, n) {
+    if (n <= 0) return;
+    if (state.view === "wizard") state.wizard.cursor = (state.wizard.cursor + delta + n) % n;
+    else state.cursor = (state.cursor + delta + n) % n;
+  }
+  function onKey(e) {
+    var k = e.key;
+    var pd = function () { if (e.preventDefault) e.preventDefault(); };
+    var t = e.target || {};
+    var inName = !!(t.dataset && t.dataset.act === "name-input");
+    if (inName && k !== "Enter" && k !== "Escape") return;  // 让文本正常输入，不拦截快捷键
+    if (k === "Escape") {
+      if (state.view === "wizard" && state.wizard.picker) {
+        closePicker(); render();
+      } else if (state.view === "wizard") {
+        cancel(); render();
+      }
+      pd(); return;
+    }
+    var n = state.view === "wizard" ? stepItems(state.wizard).length : mainItems().length;
+    if (k === "ArrowDown" || k === "j") { moveCursor(1, n); render(); pd(); return; }
+    if (k === "ArrowUp" || k === "k") { moveCursor(-1, n); render(); pd(); return; }
+    if (k === "Enter") {
+      if (state.view === "wizard") {
+        var its = stepItems(state.wizard);
+        var o = its[state.wizard.cursor];
+        if (o) dispatch(o.act, o.val, o.idx);
+      } else {
+        var mi = mainItems();
+        dispatch("item", mi[state.cursor].val, state.cursor);
+      }
+      pd(); return;
+    }
+    if (state.view === "main") {
+      if (k === "n") { dispatch("open-new"); pd(); }
+      else if (k === "e") { dispatch("open-edit"); pd(); }
+      else if (k === "r") { dispatch("reset"); pd(); }
+    }
+  }
+
+  var app = document.getElementById("app");
+  if (app && app.addEventListener) {
+    app.addEventListener("click", onClick);
+    app.addEventListener("input", onInput);
+  }
+  if (document.addEventListener) document.addEventListener("keydown", onKey);
+
+  /* 只读自检钩子：供离线 Node 检查脚本读取状态，不修改任何业务数据。 */
+  globalThis.__wizSnapshot = function () {
+    return clone({
+      profiles: state.profiles, current: state.current, view: state.view,
+      step: state.wizard ? state.wizard.steps[state.wizard.stepIdx] : null,
+      stepIdx: state.wizard ? state.wizard.stepIdx : null,
+      choices: state.wizard ? state.wizard.choices : null,
+      roleRows: state.wizard ? state.wizard.roleRows : null,
+      touched: state.wizard ? state.wizard.touched : null,
+      picker: state.wizard ? state.wizard.picker : null,
+      srcName: state.wizard ? state.wizard.srcName : null,
+      wcursor: state.wizard ? state.wizard.cursor : null,
+      cursor: state.cursor, feedback: state.feedback, log: state.log
+    });
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>

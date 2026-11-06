@@ -29,7 +29,12 @@ function makeHarness() {
   const statuses: StatusCall[] = [];
   const customOptions: Array<{ overlay?: boolean }> = [];
   const comps: any[] = [];
+  const inputsSeen: Array<{ title: string }> = [];
+  const selectsSeen: Array<{ title: string }> = [];
   let simulate: "enter" | "escape" = "enter";
+  const customKeyQueue: string[][] = [];
+  const inputQueue: Array<string | undefined> = [];
+  const selectQueue: Array<string | undefined> = [];
   const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t, dim: (t: string) => t };
   const fakePi = {
     registerCommand: (name: string, options: any) => { commands.push({ name, options }); },
@@ -43,24 +48,52 @@ function makeHarness() {
       notify: (m: string, l: string) => notes.push({ m, l }),
       setStatus: (k: string, t: string | undefined) => statuses.push({ k, t }),
       theme,
+      input: async (title: string) => {
+        inputsSeen.push({ title });
+        return inputQueue.shift();
+      },
+      select: async (title: string) => {
+        selectsSeen.push({ title });
+        return selectQueue.shift();
+      },
       custom: async (factory: any, options: any) => {
         customOptions.push(options);
-        let resolvePick!: (r: string | undefined) => void;
-        const p = new Promise<string | undefined>((res) => { resolvePick = res; });
-        const comp = await factory({}, theme, {}, resolvePick);
-        comps.push(comp);
-        if (simulate === "enter") comp.handleInput("\r");
-        else comp.handleInput("\x1b");
+        let resolved = false;
+        const p = new Promise<any>((res) => {
+          Promise.resolve(factory({}, theme, {}, (r: any) => { resolved = true; res(r); })).then(
+            (comp) => {
+              comps.push(comp);
+              const keys = customKeyQueue.length > 0
+                ? customKeyQueue.shift()!
+                : [simulate === "enter" ? "\r" : "\x1b"];
+              for (const k of keys) {
+                if (resolved) break;
+                comp.handleInput(k);
+              }
+              if (!resolved) comp.handleInput("\x1b"); // 脚本未命中可完结项 → Esc 取消防挂起
+            },
+          );
+        });
         return p;
       },
     },
     mode: "tui",
     hasUI: true,
     cwd: agentDir,
+    modelRegistry: {
+      getAvailable: () => [
+        { provider: "tcuni", id: "gpt-6.1-terra" },
+        { provider: "kimi-coding", id: "k3.1-pro" },
+      ],
+    },
   };
   return {
     fakePi, ctx, commands, sessionHandlers, notes, statuses, customOptions, comps,
+    inputsSeen, selectsSeen,
     setSimulate: (s: "enter" | "escape") => { simulate = s; },
+    setInputs: (v: Array<string | undefined>) => { inputQueue.push(...v); },
+    setSelects: (v: Array<string | undefined>) => { selectQueue.push(...v); },
+    setCustomKeys: (v: string[][]) => { customKeyQueue.push(...v); },
   };
 }
 
@@ -134,4 +167,66 @@ test("hasUI:false → 不写状态栏", async () => {
   h.ctx.hasUI = false;
   await h.sessionHandlers[0]!({ type: "session_start", reason: "startup" }, h.ctx);
   assert.equal(h.statuses.length, 0);
+});
+
+test("/subprofile new：向导真实走 input/select/custom，仅创建写入用户档目录", async () => {
+  const ext = (await import("../extensions/index.ts")).default;
+  const h = makeHarness();
+  ext(h.fakePi as any);
+  h.setInputs(["e2e-ext"]);
+  h.setSelects(["kimi", "high", "仅创建"]);
+  // kimi 档行 = defaultModel + w → 项 = [batch, dm:m, w:m, w:t, next]
+  // 会话1：w:thinking → "high"（真实改动一个字段，使新档与 settings 内容可区分）；
+  // 会话2：next。
+  h.setCustomKeys([
+    ["\x1b[B", "\x1b[B", "\x1b[B", "\r"],
+    ["\x1b[B", "\x1b[B", "\x1b[B", "\x1b[B", "\r"],
+  ]);
+  const created = join(userProfiles, "e2e-ext.json");
+  try {
+    await h.commands[0]!.options.handler("new", h.ctx);
+    assert.equal(h.inputsSeen.length, 1);
+    assert.equal(h.selectsSeen.length, 3);
+    assert.ok(nodeFs.existsSync(created));
+    assert.equal(nodeFs.statSync(created).mode & 0o777, 0o600);
+    const v = JSON.parse(nodeFs.readFileSync(created, "utf8"));
+    assert.equal(v.defaultModel, "kimi-coding/k3.1-pro");
+    assert.equal(v.agentOverrides.w.thinking, "high");
+    assert.ok(h.notes.some((n) => n.m.includes("已创建")));
+    // 仅创建不切换：settings 仍是 kimi 内容 → 状态栏匹配 kimi
+    assert.ok(h.statuses.some((s) => s.t === "subagents: kimi"));
+  } finally {
+    if (nodeFs.existsSync(created)) nodeFs.unlinkSync(created);
+  }
+});
+
+test("主面板动作行进向导：选择器按 n → new 向导启动", async () => {
+  const ext = (await import("../extensions/index.ts")).default;
+  const h = makeHarness();
+  ext(h.fakePi as any);
+  h.setInputs(["panel-new"]);
+  h.setSelects(["kimi", "仅创建"]);
+  h.setCustomKeys([["n"], ["\x1b[B", "\x1b[B", "\x1b[B", "\x1b[B", "\r"]]);
+  const created = join(userProfiles, "panel-new.json");
+  try {
+    await h.commands[0]!.options.handler("", h.ctx);
+    assert.equal(h.inputsSeen.length, 1);
+    assert.ok(nodeFs.existsSync(created));
+  } finally {
+    if (nodeFs.existsSync(created)) nodeFs.unlinkSync(created);
+  }
+});
+
+test("非 TUI 模式 new/edit → 警告且不调用 input/select/custom", async () => {
+  const ext = (await import("../extensions/index.ts")).default;
+  const h = makeHarness();
+  ext(h.fakePi as any);
+  const nonTui = { ...h.ctx, mode: "json" };
+  for (const arg of ["new", "edit"]) {
+    await h.commands[0]!.options.handler(arg, nonTui);
+  }
+  assert.equal(h.inputsSeen.length, 0);
+  assert.equal(h.selectsSeen.length, 0);
+  assert.equal(h.comps.length, 0);
+  assert.ok(h.notes.filter((n) => n.l === "warning" && n.m.includes("TUI")).length >= 2);
 });

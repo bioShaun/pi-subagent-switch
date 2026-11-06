@@ -5,17 +5,40 @@
 
 - 零运行时依赖；业务全部在 `src/`，`extensions/index.ts` 只做 host 适配。
 - 运行与测试统一要求 **Node 24+**（`node --test` 直跑 `.ts`）。
-- 档文件由用户**手写、插件只读不写**；随包预置 4 个示例档。
+- 档文件可手写，也可用内置**配置向导**（`/subprofile new|edit`）全程键盘创建/修改；
+  向导只写用户档目录，随包预置的 4 个示例档保持只读。
 
 ## 用法
 
 | 输入 | 行为 |
 | --- | --- |
-| `/subprofile` | 打开会话内联、键盘优先的 TUI 选择器：`↑/↓` 或 `j/k` 移动、`Enter` 应用、`Esc` 取消；当前档行尾 `●` 并加粗 |
+| `/subprofile` | 打开会话内联主面板：档列表（`↑/↓` 或 `j/k` 移动、`Enter` 切换、`Esc` 取消；当前档行尾 `●` 并加粗）+ `＋ 新建档` / `✎ 修改档` 两个动作行（快捷键 `n` / `e`） |
 | `/subprofile kimi` | 直接切换到 `kimi` 档 |
+| `/subprofile new` | 新建档向导：档名 → 模板 → 角色配置 → 创建并切换 / 仅创建 / 取消 |
+| `/subprofile edit` | 修改档向导：选档 → 角色配置 → 保存并切换 / 仅保存 / 取消 |
 | `/subprofile list` / `ls` | 逐条列出档名 / `defaultModel` / override 数 / 当前档标记，并提示档目录与来源 |
 | `/subprofile help` / `-h` / `--help` | 显示用法 |
-| `/subprofile <Tab>` | `getArgumentCompletions` 补全档名 |
+| `/subprofile <Tab>` | `getArgumentCompletions` 补全档名与 `new` / `edit` / `list` |
+
+### 配置向导（新建 / 修改）
+
+全程键盘操作；除档名外没有任何自由文本输入：
+
+1. **新建**：`ctx.ui.input` 输档名（自动小写、非法字符折叠成 `-`、空名报错重试、
+   重名自动 `-2`/`-3`）→ `ctx.ui.select` 选模板（沿用其角色结构）→ 角色配置面板
+   → `创建并切换` / `仅创建` / `取消`。
+2. **修改**：`ctx.ui.select` 选档 → 角色配置面板 → `保存并切换` / `仅保存` / `取消`。
+   修改包内示例档时先复制到用户档目录，**包内文件逐字节不动**。
+3. **角色配置面板**（`ctx.ui.custom` 内联组件）：`defaultModel` + 模板全部角色逐行
+   列出，每行独立 `model` / `thinking` 单元格，Enter 打开宿主原生 select 选择；
+   顶部「批量应用同一模型到全部行」是可选快捷，批量后仍可逐行覆盖，选择列表末位
+   的 `↩ 恢复原值` 可撤销。model 选项来自 `ctx.modelRegistry.getAvailable()`，
+   无可用模型时该项降级为警告、thinking 仍可选。
+4. **提交语义**：只有本次改过的字段进入写入（`tools` 等未触碰字段原样保留）；
+   任一步 `Esc` / 取消都**零写入**。写入前做 schema 校验，用户档目录缺失自动创建；
+   修改已有档先备份原始字节（`0o600`）。写完重新加载档目录，选了「切换」才走与
+   `/subprofile <name>` 相同的 `applyProfile` 路径——向导不直接写 `settings.json`。
+   非 TUI 模式下降级为警告，不调用交互接口。
 
 状态栏用唯一 key `pi-subagent-switch`，显示 `subagents: kimi` / `subagents: custom` /
 `subagents: 无档`；在 `session_start` 事件与每次 `/subprofile` 命令结束后刷新（含
@@ -41,11 +64,11 @@
 会给出「档名 + 字段路径」的可读错误且**不落盘**。单个档损坏不影响其它档，`list`
 会逐条告警，按名直切损坏档返回原始 JSON/schema 错误（不会误报为「档不存在」）。
 
-## 目录优先级（插件只读）
+## 目录优先级（加载只读，向导只写用户目录）
 
-1. 环境变量 `PI_SUBAGENT_PROFILES_DIR`（设置后**不回退**）
-2. `~/.pi/agent/subagent-profiles/*.json` — 用户手写主位置
-3. 包内 `profiles/*.json` — 随插件发布的 4 个示例档，仅当上面都没有可用档时兜底
+1. 环境变量 `PI_SUBAGENT_PROFILES_DIR`（设置后**不回退**；此时它就是向导的写入目录）
+2. `~/.pi/agent/subagent-profiles/*.json` — 用户档主位置；手写或向导写入（`0o600`）
+3. 包内 `profiles/*.json` — 随插件发布的 4 个示例档，仅当上面都没有可用档时兜底，永不写
 
 只认 `*.json`（大小写不敏感），跳过以 `.` 开头的文件名。实际生效目录在
 `/subprofile list` 中显示为 `档目录：<dir> (<source>)`。
@@ -108,9 +131,10 @@ npm test              # node --test "test/*.test.ts"，全 pass、无 skip、# f
 
 测试覆盖：schema 全表、档目录优先级与损坏档、settings 备份/权限/并发指纹、当前档
 检测、切换编排、状态刷新、按键解析、内联选择器、命令分支、fake Pi/ctx 宿主接线，
-以及用 `test/fixtures/settings.sample.json` 在临时目录做的文件层端到端（不碰真实
-settings）。`docs/prototype.html` 是零依赖、离线可打开的行为与视觉基准，只使用内存
-数据、不读写真实文件。
+档安全写入（校验/原子写/`0o600`/备份）、角色面板与配置向导端到端（fake Pi 真实
+执行 `input`/`select`/`custom`，不碰真实 settings 与档目录）。
+`docs/prototype.html` 与 `docs/wizard-prototype.html` 是零依赖、离线可打开的行为与
+视觉基准，只使用内存数据、不读写真实文件。
 
 ## 真机安装（由用户自行决定并执行）
 

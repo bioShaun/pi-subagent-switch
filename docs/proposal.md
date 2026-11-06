@@ -21,7 +21,7 @@
 | --- | --- | --- |
 | 一个档覆盖什么 | **整个 `subagents` 块** | 不只换模型，`tools` / `mutationTools` / `subagentOnlyExtensions` 等结构字段也跟着整档走 |
 | 怎么切 | **TUI 选择器 + 带参命令 + 状态栏**，三者都要 | 无参开选择器、`<name>` 直切、footer 常显当前档 |
-| 档怎么维护 | **纯手写 JSON 文件，插件只读不写档文件** | 随包预置 4 套示例，用户自己改文件 |
+| 档怎么维护 | ~~纯手写 JSON 文件，插件只读不写档文件~~ → v0.2.0 起由 `/subprofile new|edit` 向导创建/修改 | 向导只写用户档目录；包内示例档仍只读 |
 | 技术路线 | **独立新插件** | 不依赖、不修改 `pi-subagent-cfg`(`/submodel`)，不用原生 `agentOverridesByProvider` |
 
 ---

@@ -7,6 +7,10 @@ import { SettingsStoreError } from "./settings-store.ts";
 import { detectCurrentProfile } from "./current-profile.ts";
 import type { CurrentProfile } from "./current-profile.ts";
 import { applyProfile } from "./apply-profile.ts";
+import { ProfileStoreError } from "./profile-store.ts";
+import type { SelectorResult } from "./ui/profile-selector.ts";
+
+export type { SelectorResult } from "./ui/profile-selector.ts";
 
 export type NotifyLevel = "info" | "warning" | "error";
 
@@ -14,8 +18,10 @@ export interface CommandDeps {
   readonly fs: FsLike;
   readonly settingsPath: string;
   readonly roots: readonly ProfileRoot[];
-  /** 打开内联 TUI 选择器；返回选中档名或 undefined（取消）。 */
-  readonly openSelector: (state: SelectorState) => Promise<string | undefined>;
+  /** 打开内联 TUI 主面板；返回切档 / 进向导结果或 undefined（取消）。 */
+  readonly openSelector: (state: SelectorState) => Promise<SelectorResult | undefined>;
+  /** 新建/修改档配置向导（adapter 接 ctx.ui + modelRegistry；非 TUI 降级警告）。 */
+  readonly openConfigWizard: (kind: "new" | "edit") => Promise<void>;
   readonly notify: (message: string, level: NotifyLevel) => void;
   /** 每次命令结束后回调（adapter 接 refreshStatus），含 list、帮助、取消与失败。 */
   readonly onAfterCommand: () => void;
@@ -27,9 +33,11 @@ export interface SelectorState {
 }
 
 export const USAGE =
-  "用法：/subprofile [name|list]\n" +
-  "  /subprofile          → 打开选择器\n" +
+  "用法：/subprofile [name|new|edit|list]\n" +
+  "  /subprofile          → 打开主面板（切换 / 新建 / 修改）\n" +
   "  /subprofile kimi     → 直接切换到 kimi 档\n" +
+  "  /subprofile new      → 新建档向导\n" +
+  "  /subprofile edit     → 修改档向导\n" +
   "  /subprofile list     → 列出所有档与当前档";
 
 function errMsg(e: unknown): string {
@@ -88,6 +96,11 @@ export async function runSubprofile(args: string, deps: CommandDeps): Promise<vo
       return;
     }
 
+    if (trimmed === "new" || trimmed === "edit") {
+      await deps.openConfigWizard(trimmed);
+      return;
+    }
+
     if (trimmed === "") {
       if (set.profiles.length === 0) {
         deps.notify(
@@ -109,13 +122,21 @@ export async function runSubprofile(args: string, deps: CommandDeps): Promise<vo
         errors: set.errors,
       });
       if (picked === undefined) return;
-      await switchTo(picked, set, deps);
+      if (picked.kind === "switch") {
+        await switchTo(picked.name, set, deps);
+        return;
+      }
+      await deps.openConfigWizard(picked.kind);
       return;
     }
 
     await switchTo(trimmed, set, deps);
   } catch (e) {
-    if (e instanceof ProfileError || e instanceof SettingsStoreError) {
+    if (
+      e instanceof ProfileError ||
+      e instanceof SettingsStoreError ||
+      e instanceof ProfileStoreError
+    ) {
       deps.notify(e.message, "error");
     } else {
       deps.notify(`/subprofile 失败：${errMsg(e)}`, "error");
@@ -129,7 +150,7 @@ export async function runSubprofile(args: string, deps: CommandDeps): Promise<vo
   }
 }
 
-/** 供 getArgumentCompletions：按 prefix 过滤档名，list 放最后。 */
+/** 供 getArgumentCompletions：按 prefix 过滤档名，new/edit/list 子命令放最后。 */
 export function completeProfiles(
   prefix: string,
   deps: { fs: FsLike; roots: readonly ProfileRoot[] },
@@ -142,6 +163,12 @@ export function completeProfiles(
       label: p.name,
       description: p.summary.defaultModel,
     }));
+  if ("new".startsWith(prefix) || prefix === "") {
+    items.push({ value: "new", label: "new", description: "新建档向导" });
+  }
+  if ("edit".startsWith(prefix) || prefix === "") {
+    items.push({ value: "edit", label: "edit", description: "修改档向导" });
+  }
   if ("list".startsWith(prefix) || prefix === "") {
     items.push({ value: "list", label: "list", description: "列出所有档与当前档" });
   }

@@ -9,8 +9,9 @@ import type { ProfileRoot } from "../src/profiles.ts";
 import { completeProfiles, runSubprofile } from "../src/command.ts";
 import type { CommandDeps } from "../src/command.ts";
 import { refreshStatus } from "../src/status.ts";
+import { runConfigureWizard } from "../src/configure-profile.ts";
 import { createProfileSelector } from "../src/ui/profile-selector.ts";
-import type { SelectorTheme } from "../src/ui/profile-selector.ts";
+import type { SelectorResult, SelectorTheme } from "../src/ui/profile-selector.ts";
 
 const nodeFsLike = nodeFs as unknown as FsLike;
 
@@ -54,6 +55,20 @@ interface StatusDeps {
   roots: readonly ProfileRoot[];
 }
 
+/** ctx.modelRegistry.getAvailable() → `${provider}/${id}` 列表；宿主缺失/抛错 → []。 */
+function modelIds(ctx: PiCommandContext): string[] {
+  const reg = ctx.modelRegistry;
+  if (!reg || typeof reg.getAvailable !== "function") return [];
+  try {
+    return reg
+      .getAvailable()
+      .map((m) => `${m.provider}/${m.id}`)
+      .filter((s) => s.length > 1);
+  } catch {
+    return [];
+  }
+}
+
 function makeDeps(ctx: PiCommandContext, statusDeps: StatusDeps): CommandDeps {
   return {
     fs: nodeFsLike,
@@ -68,7 +83,7 @@ function makeDeps(ctx: PiCommandContext, statusDeps: StatusDeps): CommandDeps {
         );
         return undefined;
       }
-      const picked = await ctx.ui.custom<string | undefined>(
+      const picked = await ctx.ui.custom<SelectorResult | undefined>(
         (_tui, theme, _kb, done) =>
           createProfileSelector({
             profiles: state.profiles,
@@ -79,6 +94,28 @@ function makeDeps(ctx: PiCommandContext, statusDeps: StatusDeps): CommandDeps {
         { overlay: false },
       );
       return picked ?? undefined;
+    },
+    openConfigWizard: async (kind) => {
+      if (ctx.mode !== "tui") {
+        ctx.ui.notify(
+          `/subprofile ${kind} 向导需要交互式 TUI；请手动编辑用户档目录下的 *.json。`,
+          "warning",
+        );
+        return;
+      }
+      const userRoot = statusDeps.roots.find((r) => r.source === "user");
+      if (!userRoot) {
+        ctx.ui.notify("未找到可写的用户档目录（roots 无 user 根）", "error");
+        return;
+      }
+      await runConfigureWizard(kind, {
+        fs: nodeFsLike,
+        settingsPath: statusDeps.settingsPath,
+        roots: statusDeps.roots,
+        userDir: userRoot.dir,
+        ui: ctx.ui,
+        models: modelIds(ctx),
+      });
     },
     onAfterCommand: () => {
       refreshStatus(statusDeps, {

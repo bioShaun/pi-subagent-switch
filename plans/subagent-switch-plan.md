@@ -14,7 +14,7 @@
 1. **档 = `subagents` 整块替换**：切换即把 user 级 `~/.pi/agent/settings.json` 的顶层 `subagents` 键整体替换为档文件内容；其它顶层键（`theme`、`packages`、`compaction`、`enabledModels` …）的 **JSON 值保持不变**。实现采用解析后重写整个 JSON 文档，允许空白、缩进与转义形式被规范化，不承诺保留原始字节。
 2. **两个入口**：`/subprofile <name>` 直切；`/subprofile`（无参）打开键盘优先 TUI 选择器；`/subprofile list` 列出档；`getArgumentCompletions` 提供档名 Tab 补全。
 3. **持久显示当前档**：status line 常显 `subagents: <name>`（未命中为 `custom`）；状态只反映 user 级 settings，不代表项目级覆盖后的最终有效值。
-4. **档文件纯手写、插件只读不写**：用户在 `~/.pi/agent/subagent-profiles/*.json` 手写；插件仅读。包内 `profiles/` 提供 4 个示例档（gpt / kimi / claude / local）。
+4. **档文件纯手写、插件只读不写**（v0.2.0 修订）：用户在 `~/.pi/agent/subagent-profiles/*.json` 手写；插件仅读。包内 `profiles/` 提供 4 个示例档（gpt / kimi / claude / local）。**v0.2.0 起**新增 `/subprofile new|edit` 配置向导与主面板动作行：档名输入 → 模板/选档 → 逐角色 model/thinking 面板 → 创建/保存（并可切换）；写入仅限用户档目录（schema 校验、原子写、`0o600`、改前备份），包内示例档仍只读，修改包内档先复制到用户目录。
 5. **零运行时依赖**、`node --test` 直跑 `.ts`、`tsc --noEmit` 严格类型；运行与测试统一要求 Node 24+。
 6. **可交互原型**：`docs/prototype.html` 作为零依赖、离线可打开的行为与视觉基准；只使用内存数据，不读写真实文件，覆盖直切、list、Tab 补全、内联选择器、备份记录、custom 状态与响应式布局。
 

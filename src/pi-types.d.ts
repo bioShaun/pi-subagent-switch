@@ -20,9 +20,32 @@ declare module "@earendil-works/pi-coding-agent" {
     label: string;
     description?: string;
   }
+  export interface PiDialogOptions {
+    signal?: AbortSignal;
+    timeout?: number;
+  }
+  /** modelRegistry.getAvailable() 元素的最小子集：档里的 model 值就是 `${provider}/${id}`。 */
+  export interface PiModel {
+    readonly provider: string;
+    readonly id: string;
+    readonly name?: string;
+  }
+  export interface PiModelRegistry {
+    getAvailable(): PiModel[];
+  }
   export interface PiUIContext {
     notify(message: string, type?: "info" | "warning" | "error"): void;
     setStatus(key: string, text: string | undefined): void;
+    select(
+      title: string,
+      options: readonly string[],
+      opts?: PiDialogOptions,
+    ): Promise<string | undefined>;
+    input(
+      title: string,
+      placeholder?: string,
+      opts?: PiDialogOptions,
+    ): Promise<string | undefined>;
     readonly theme: PiTheme;
     custom<T>(
       factory: (
@@ -40,6 +63,7 @@ declare module "@earendil-works/pi-coding-agent" {
     mode: PiMode;
     hasUI: boolean;
     cwd: string;
+    modelRegistry: PiModelRegistry;
   }
   export interface PiCommandContext extends PiContext {}
   export interface PiSessionStartEvent {

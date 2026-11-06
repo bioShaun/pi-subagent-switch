@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FsLike } from "../src/fs.ts";
 import { USAGE, runSubprofile, completeProfiles } from "../src/command.ts";
-import type { CommandDeps, SelectorState, NotifyLevel } from "../src/command.ts";
+import type { CommandDeps, SelectorState, NotifyLevel, SelectorResult } from "../src/command.ts";
 
 const fs = nodeFs as unknown as FsLike;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -22,7 +22,8 @@ interface Harness {
   deps: CommandDeps;
   notes: Array<{ msg: string; level: NotifyLevel }>;
   selectors: SelectorState[];
-  setSelector: (r: string | undefined) => void;
+  wizardCalls: string[];
+  setSelector: (r: SelectorResult | undefined) => void;
   after: () => number;
 }
 function harness(files: Record<string, string>, settings?: string): Harness {
@@ -34,7 +35,8 @@ function harness(files: Record<string, string>, settings?: string): Harness {
   if (settings !== undefined) nodeFs.writeFileSync(settingsPath, settings);
   const notes: Array<{ msg: string; level: NotifyLevel }> = [];
   const selectors: SelectorState[] = [];
-  let picked: string | undefined = undefined;
+  const wizardCalls: string[] = [];
+  let picked: SelectorResult | undefined = undefined;
   let afterCount = 0;
   const deps: CommandDeps = {
     fs,
@@ -45,12 +47,16 @@ function harness(files: Record<string, string>, settings?: string): Harness {
       selectors.push(state);
       return picked;
     },
+    openConfigWizard: async (kind) => {
+      wizardCalls.push(kind);
+    },
     onAfterCommand: () => { afterCount++; },
   };
   return {
     deps,
     notes,
     selectors,
+    wizardCalls,
     setSelector: (r) => { picked = r; },
     after: () => afterCount,
   };
@@ -152,9 +158,41 @@ test("取消选择器（undefined）→ 静默且仍恰好刷新一次", async (
 test("选择器返回名字 → 走切换", async () => {
   const settings = JSON.stringify({ theme: "dark", subagents: { old: 1 } });
   const h = harness({ "kimi.json": KIMI }, settings);
-  h.setSelector("kimi");
+  h.setSelector({ kind: "switch", name: "kimi" });
   await runSubprofile("", h.deps);
   assert.ok(h.notes.some((n) => n.msg.includes("已切换到档")));
+  assert.equal(h.wizardCalls.length, 0);
+});
+
+test("/subprofile new|edit → 进入配置向导；主面板 new/edit 结果同样进入", async () => {
+  const h1 = harness({ "kimi.json": KIMI });
+  await runSubprofile("new", h1.deps);
+  assert.deepEqual(h1.wizardCalls, ["new"]);
+  assert.equal(h1.after(), 1);
+
+  const h2 = harness({ "kimi.json": KIMI });
+  await runSubprofile("edit", h2.deps);
+  assert.deepEqual(h2.wizardCalls, ["edit"]);
+
+  const h3 = harness({ "kimi.json": KIMI });
+  h3.setSelector({ kind: "new" });
+  await runSubprofile("", h3.deps);
+  assert.deepEqual(h3.wizardCalls, ["new"]);
+
+  const h4 = harness({ "kimi.json": KIMI });
+  h4.setSelector({ kind: "edit" });
+  await runSubprofile("", h4.deps);
+  assert.deepEqual(h4.wizardCalls, ["edit"]);
+});
+
+test("USAGE 与补全包含 new/edit/list", async () => {
+  assert.ok(USAGE.includes("new"));
+  assert.ok(USAGE.includes("edit"));
+  const dir = tmp("complete2");
+  nodeFs.writeFileSync(join(dir, "kimi.json"), KIMI);
+  const roots = [{ dir, source: "user" as const }];
+  const all = completeProfiles("", { fs, roots });
+  assert.deepEqual(all.map((i) => i.value), ["kimi", "new", "edit", "list"]);
 });
 
 test("runSubprofile 永不抛出：onAfterCommand 自身异常也吞掉", async () => {
@@ -170,7 +208,7 @@ test("completeProfiles 按 prefix 过滤，list 放最后", () => {
   nodeFs.writeFileSync(join(dir, "local.json"), GPT);
   const roots = [{ dir, source: "user" as const }];
   const all = completeProfiles("", { fs, roots });
-  assert.deepEqual(all.map((i) => i.value), ["kimi", "local", "list"]);
+  assert.deepEqual(all.map((i) => i.value), ["kimi", "local", "new", "edit", "list"]);
   const ki = completeProfiles("ki", { fs, roots });
   assert.ok(ki.some((i) => i.value === "kimi"));
   assert.ok(!ki.some((i) => i.value === "local"));
