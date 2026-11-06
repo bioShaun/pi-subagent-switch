@@ -1,4 +1,4 @@
-import { truncateToWidth } from "@earendil-works/pi-tui/dist/utils.js";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { parseKey } from "../keys.ts";
 import { framedPanel } from "./frame.ts";
 import type { Profile } from "../profiles.ts";

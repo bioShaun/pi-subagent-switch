@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui/dist/utils.js";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 export interface FrameTheme {
   fg(color: string, text: string): string;

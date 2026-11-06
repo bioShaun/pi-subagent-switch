@@ -92,4 +92,11 @@ declare module "@earendil-works/pi-coding-agent" {
 
 declare module "@earendil-works/pi-tui" {
   export function parseKey(data: string): string | undefined;
+  export function truncateToWidth(
+    text: string,
+    maxWidth: number,
+    ellipsis?: string,
+    pad?: boolean,
+  ): string;
+  export function visibleWidth(str: string): number;
 }

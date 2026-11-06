@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { visibleWidth } from "@earendil-works/pi-tui/dist/utils.js";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { createSearchableSelect } from "../src/ui/searchable-select.ts";
 
 const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };

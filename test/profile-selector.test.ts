@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { visibleWidth } from "@earendil-works/pi-tui/dist/utils.js";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { createProfileSelector } from "../src/ui/profile-selector.ts";
 import type { SelectorResult } from "../src/ui/profile-selector.ts";
 import type { Profile } from "../src/profiles.ts";
