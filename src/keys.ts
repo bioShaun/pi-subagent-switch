@@ -1,3 +1,5 @@
+import { parseKey as parsePiKey } from "@earendil-works/pi-tui";
+
 export type KeyId =
   | "up"
   | "down"
@@ -10,17 +12,31 @@ export type KeyId =
   | "pagedown"
   | { char: string };
 
-/** 手写识别（不 import pi-tui，保持零运行时依赖），只认选择器需要的按键。 */
 export function parseKey(data: string): KeyId | undefined {
-  if (data === "\x1b[A" || data === "\x1bOA") return "up";
-  if (data === "\x1b[B" || data === "\x1bOB") return "down";
-  if (data === "\r" || data === "\n") return "enter";
-  if (data === "\x1b") return "escape";
-  if (data === "\x03") return "ctrl+c";
-  if ([...data].length === 1) {
-    const ch = data;
-    if (!/[\u0000-\u001f\u007f]/.test(ch)) return { char: ch };
-    return undefined;
+  const key = parsePiKey(data);
+  switch (key) {
+    case "up":
+    case "down":
+    case "enter":
+    case "escape":
+    case "ctrl+c":
+    case "home":
+    case "end":
+      return key;
+    case "pageUp":
+      return "pageup";
+    case "pageDown":
+      return "pagedown";
+    case "esc":
+      return "escape";
+    case "space":
+      return { char: " " };
+  }
+  if (key !== undefined && [...key].length === 1 && !/[\u0000-\u001f\u007f]/.test(key)) {
+    return { char: key };
+  }
+  if ([...data].length === 1 && !/[\u0000-\u001f\u007f]/.test(data)) {
+    return { char: data };
   }
   return undefined;
 }

@@ -157,7 +157,7 @@ pi-subagent-switch/
 │   ├── settings-store.ts         # settings 读 / 整块替换 / 备份 / 原子写 / 并发指纹
 │   ├── current-profile.ts        # 内容深比较 → 当前档名
 │   ├── apply-profile.ts          # 切换编排
-│   ├── status.ts / keys.ts       # 状态栏文本、终端按键解析（不引入 pi-tui）
+│   ├── status.ts / keys.ts       # 状态栏文本、基于宿主 pi-tui 的完整按键解析
 │   ├── command.ts                # 命令 seam（全依赖注入，可单测）
 │   └── ui/profile-selector.ts    # 内联 TUI 选择器组件
 ├── profiles/                     # 4 个手写示例档

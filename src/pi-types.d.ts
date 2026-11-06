@@ -65,3 +65,7 @@ declare module "@earendil-works/pi-coding-agent" {
   export const CONFIG_DIR_NAME: string;
   export function getAgentDir(): string;
 }
+
+declare module "@earendil-works/pi-tui" {
+  export function parseKey(data: string): string | undefined;
+}

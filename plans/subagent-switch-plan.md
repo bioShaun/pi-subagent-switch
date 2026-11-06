@@ -418,12 +418,11 @@ export type KeyId =
   | "up" | "down" | "enter" | "escape" | "ctrl+c" | "home" | "end" | "pageup" | "pagedown"
   | { char: string };
 
-/** 手写识别（不 import pi-tui，保持零运行时依赖）：\x1b[A / \x1bOA → up；\x1b[B / \x1bOB → down；
- *  \r 或 \n → enter；单独 \x1b → escape；\x03 → ctrl+c；其余单码点可打印字符 → {char}；无法识别 → undefined。 */
+/** 使用 Pi 宿主的 pi-tui parseKey，归一化为本选择器 KeyId；支持 legacy、Kitty 与 CSI-u。 */
 export function parseKey(data: string): KeyId | undefined;
 ```
 
-> 取舍说明：`pi-subagent-cfg/src/submodel/keys.ts:15` 用 `@earendil-works/pi-tui` 的 `parseKey`，但那会引入运行时 peer 依赖（且可能解析到另一份 pi-tui 副本）；本插件只需 5 个键，手写更省事、可测。**不引入 `@earendil-works/pi-tui` 依赖。**
+> 真机验收发现手写解析无法覆盖 Pi 1.5 的 Kitty/CSI-u 输入，导致方向键与取消失效。因此复用 `pi-subagent-cfg/src/submodel/keys.ts:15` 的宿主解析路线：`@earendil-works/pi-tui` 是可选 peer（与 Pi 同大版本），开发环境固定 1.5.0 用于真实解析回归；运行时 `dependencies` 仍为空。
 
 ### 3.11 `src/ui/profile-selector.ts`
 
@@ -649,15 +648,21 @@ return { name, changed: true, overrideCount, defaultModel, backupPath }
   "keywords": ["pi-package", "pi-subagents", "subagents", "profile", "tui"],
   "pi": { "extensions": ["./extensions/index.ts"] },
   "files": ["src", "extensions", "profiles", "README.md"],
-  "peerDependencies": { "@earendil-works/pi-coding-agent": ">=1.5.0 <2" },
-  "peerDependenciesMeta": { "@earendil-works/pi-coding-agent": { "optional": true } },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.5.0 <2",
+    "@earendil-works/pi-tui": ">=1.5.0 <2"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": { "optional": true },
+    "@earendil-works/pi-tui": { "optional": true }
+  },
   "scripts": { "test": "node --test \"test/*.test.ts\"", "typecheck": "tsc --noEmit" },
-  "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.0" },
+  "devDependencies": { "@earendil-works/pi-tui": "1.5.0", "@types/node": "^24.0.0", "typescript": "^5.9.0" },
   "engines": { "node": ">=24" }
 }
 ```
 
-零 `dependencies`，**不声明** `@earendil-works/pi-tui`（§3.10）。
+零 `dependencies`；`pi-tui` 作为宿主可选 peer，并固定在 devDependencies 1.5.0 用于测试（§3.10）。
 
 ---
 
