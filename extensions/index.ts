@@ -117,8 +117,8 @@ function makeDeps(ctx: PiCommandContext, statusDeps: StatusDeps): CommandDeps {
         models: modelIds(ctx),
       });
     },
+    // 仅主面板 d 快捷键会走到这里，而主面板只在 TUI 打开；CLI delete <name> 不经过确认。
     confirmDelete: async (name) => {
-      if (ctx.mode !== "tui") return false;
       const choice = await ctx.ui.select(
         `确认删除用户档 "${name}"？（删除前会自动备份）`,
         ["确认删除", "取消"],

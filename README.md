@@ -16,8 +16,8 @@
 | `/subprofile kimi` | 直接切换到 `kimi` 档 |
 | `/subprofile new` | 新建档向导：档名 → 模板 → 角色配置 → 创建并切换 / 仅创建 / 取消 |
 | `/subprofile edit` | 修改档向导：选档 → 角色配置 → 保存并切换 / 仅保存 / 取消 |
-| `/subprofile delete <name>` / `rm` | 删除指定用户档（删除前自动备份，若曾覆盖内置同名档则自动恢复内置档） |
-| `/subprofile list` / `ls` | 逐条列出档名 / `defaultModel` / override 数 / 当前档标记，并提示档目录与来源 |
+| `/subprofile delete <name>` / `rm` | 删除指定用户档（删除前自动备份，若曾覆盖内置同名档则自动恢复内置档）；CLI 全模式可用，显式命令即确认，主面板 `d` 删除需 TUI 二次确认 |
+| `/subprofile list` / `ls` | 逐条列出档名 / `defaultModel` / override 数 / 当前档标记，内置档行尾带 `（内置）`，并逐行列出所有存在的档目录与来源 |
 | `/subprofile help` / `-h` / `--help` | 显示用法 |
 | `/subprofile <Tab>` | `getArgumentCompletions` 补全档名与 `new` / `edit` / `delete` / `rm` / `list` |
 
@@ -75,8 +75,9 @@
    - 包内 `profiles/*.json` — 随插件发布的 4 个示例档，永不写
    - 同名档以用户档为准（用户同名损坏档屏蔽包内同名档）；未重名的包内预置档保留可见。
 
-只认 `*.json`（大小写不敏感），跳过以 `.` 开头的文件名。实际生效目录在
-`/subprofile list` 中显示为 `档目录：<dir> (<source>)`。
+只认 `*.json`（大小写不敏感），跳过以 `.` 开头的文件名。所有存在的档目录在
+`/subprofile list` 中逐行显示为 `档目录：<dir> (<source>)`；仅来自包内的档行尾带
+`（内置）` 标记，被用户同名档覆盖的内置档不显示。
 
 ## 4 个示例档
 
@@ -147,8 +148,11 @@ npm test              # node --test "test/*.test.ts"，全 pass、无 skip、# f
 
 ```bash
 pi install https://github.com/bioShaun/pi-subagent-switch
-mkdir -p ~/.pi/agent/subagent-profiles
-cp ~/.pi/agent/git/github.com/bioShaun/pi-subagent-switch/profiles/*.json ~/.pi/agent/subagent-profiles/
 ```
+
+包内 4 个示例档安装后自动可见，**无需复制**。手写档放入
+`~/.pi/agent/subagent-profiles/`（不存在则自行创建）；用向导新建/修改档时该目录会自动创建。
+把示例档复制成用户档反而会让它屏蔽包内原版，收不到未来的示例更新——只有想基于示例
+长期定制时才需要这么做（向导修改内置档时会自动完成复制）。
 
 也可以安装本地源码：`pi install /path/to/pi-subagent-switch`。

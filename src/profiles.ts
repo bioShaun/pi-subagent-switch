@@ -21,7 +21,6 @@ export interface ProfileSet {
   readonly profiles: Profile[];
   readonly errors: ProfileError[];
   readonly dirs: readonly ProfileRoot[];
-  readonly usedDir: ProfileRoot | undefined;
 }
 export interface LoadDeps {
   fs: FsLike;
@@ -59,7 +58,6 @@ export function loadProfiles(deps: LoadDeps): ProfileSet {
   const errors: ProfileError[] = [];
   const loaded: Profile[] = [];
   const seenNames = new Set<string>();
-  let usedDir: ProfileRoot | undefined;
 
   for (const root of roots) {
     // existsSync 抛错属异常，向上冒泡（refreshStatus 借此降级为 "subagents: ?"）；
@@ -73,7 +71,6 @@ export function loadProfiles(deps: LoadDeps): ProfileSet {
     } catch {
       continue;
     }
-    let rootContributed = false;
     for (const f of names) {
       const name = stem(f);
       if (seenNames.has(name)) continue;
@@ -108,17 +105,13 @@ export function loadProfiles(deps: LoadDeps): ProfileSet {
           summary,
           source: root.source,
         });
-        rootContributed = true;
       } catch (e) {
         errors.push(asProfileError(e, name));
       }
     }
-    if (rootContributed && usedDir === undefined) {
-      usedDir = root;
-    }
   }
   loaded.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  return { profiles: loaded, errors, dirs: roots, usedDir };
+  return { profiles: loaded, errors, dirs: roots };
 }
 
 /** 名字大小写敏感；允许省略 ".json"；同名损坏档抛原始错误，完全不存在才 not-found。 */

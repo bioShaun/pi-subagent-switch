@@ -91,7 +91,6 @@ test("按名合并（Per-profile Shadowing）：user 优先且未重名 package 
   assert.equal(c?.source, "user");
   assert.equal(c?.summary.defaultModel, "user/c");
 
-  assert.equal(set.usedDir?.source, "user");
   assert.equal(set.errors.length, 1);
   assert.equal(set.errors[0]?.profile, "d");
   assert.equal(set.errors[0]?.kind, "invalid-json");
@@ -107,7 +106,7 @@ test("user 空目录 → 回退 package", () => {
     roots: roots([join(u, "subagent-profiles"), "user"], [join(p, "profiles"), "package"]),
   });
   assert.deepEqual(set.profiles.map((x) => x.name), ["b"]);
-  assert.equal(set.usedDir?.source, "package");
+  assert.equal(set.profiles[0]?.source, "package");
 });
 
 test("目录全部缺失 → 空集且不抛错", () => {
@@ -116,7 +115,6 @@ test("目录全部缺失 → 空集且不抛错", () => {
     roots: roots([join(TMP, "nope1"), "user"], [join(TMP, "nope2"), "package"]),
   });
   assert.deepEqual(set.profiles, []);
-  assert.equal(set.usedDir, undefined);
 });
 
 test("跳过 . 前缀文件 + .json 大小写不敏感", () => {

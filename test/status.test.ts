@@ -34,7 +34,7 @@ test("statusLabel 三分支", () => {
     statusLabel({ name: "custom", matched: false, detail: undefined }, set),
     "subagents: custom",
   );
-  const empty: ProfileSet = { profiles: [], errors: [], dirs: [], usedDir: undefined };
+  const empty: ProfileSet = { profiles: [], errors: [], dirs: [] };
   assert.equal(
     statusLabel({ name: "custom", matched: false, detail: undefined }, empty),
     "subagents: 无档",

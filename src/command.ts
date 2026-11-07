@@ -22,7 +22,7 @@ export interface CommandDeps {
   readonly openSelector: (state: SelectorState) => Promise<SelectorResult | undefined>;
   /** 新建/修改档配置向导（adapter 接 ctx.ui + modelRegistry；非 TUI 降级警告）。 */
   readonly openConfigWizard: (kind: "new" | "edit") => Promise<void>;
-  /** 删除前二次确认（非 TUI 降级返回 false）。 */
+  /** 主面板 d 删除前的二次确认（仅 TUI 面板路径会调用；CLI delete 显式命令即确认）。 */
   readonly confirmDelete?: (name: string) => Promise<boolean>;
   readonly notify: (message: string, level: NotifyLevel) => void;
   /** 每次命令结束后回调（adapter 接 refreshStatus），含 list、帮助、取消与失败。 */
@@ -110,9 +110,12 @@ export async function runSubprofile(args: string, deps: CommandDeps): Promise<vo
     const set = loadProfiles({ fs: deps.fs, roots: deps.roots });
 
     if (trimmed === "list" || trimmed === "ls") {
-      const dir = set.usedDir?.dir ?? "（未找到）";
-      const source = set.usedDir?.source ?? "—";
-      deps.notify(`档目录：${dir} (${source})`, "info");
+      const dirs = set.dirs.filter((r) => deps.fs.existsSync(r.dir));
+      if (dirs.length === 0) {
+        deps.notify("档目录：（未找到）", "info");
+      } else {
+        for (const r of dirs) deps.notify(`档目录：${r.dir} (${r.source})`, "info");
+      }
       const current = detectCurrentProfile({
         fs: deps.fs,
         settingsPath: deps.settingsPath,
@@ -120,8 +123,9 @@ export async function runSubprofile(args: string, deps: CommandDeps): Promise<vo
       });
       for (const p of set.profiles) {
         const mark = current.matched && current.name === p.name ? "●" : "  ";
+        const source = p.source === "package" ? "（内置）" : "";
         deps.notify(
-          `${mark} ${p.name} — ${p.summary.defaultModel ?? "—"} (${p.summary.overrideCount} overrides)`,
+          `${mark} ${p.name} — ${p.summary.defaultModel ?? "—"} (${p.summary.overrideCount} overrides)${source}`,
           "info",
         );
       }

@@ -106,6 +106,37 @@ test("ls 与 list 等价", async () => {
   assert.ok(h.notes.some((n) => n.msg.includes("档目录")));
 });
 
+test("list 合并目录：逐行列出存在的档目录，仅内置档带（内置）标记", async () => {
+  const h = harness({ "kimi.json": KIMI, "gpt.json": GPT });
+  const pkgDir = tmp("pkg-list");
+  nodeFs.writeFileSync(join(pkgDir, "gpt.json"), JSON.stringify({ defaultModel: "pkg/gpt" }));
+  nodeFs.writeFileSync(join(pkgDir, "claude.json"), GPT);
+  const deps: CommandDeps = {
+    ...h.deps,
+    roots: [...h.deps.roots, { dir: pkgDir, source: "package" }],
+  };
+  await runSubprofile("list", deps);
+  const dirLines = h.notes.filter((n) => n.msg.startsWith("档目录："));
+  assert.equal(dirLines.length, 2);
+  assert.ok(dirLines.some((n) => n.msg.includes(h.deps.roots[0]!.dir) && n.msg.includes("(user)")));
+  assert.ok(dirLines.some((n) => n.msg.includes(pkgDir) && n.msg.includes("(package)")));
+  // 用户 gpt 屏蔽内置 gpt → 无标记；claude 仅来自包 → 带标记
+  const gptLine = h.notes.find((n) => n.msg.includes("gpt —"));
+  assert.ok(gptLine && !gptLine.msg.includes("（内置）"));
+  const claudeLine = h.notes.find((n) => n.msg.includes("claude —"));
+  assert.ok(claudeLine && claudeLine.msg.includes("（内置）"));
+});
+
+test("list 档目录全缺失 → 档目录：（未找到）", async () => {
+  const h = harness({});
+  const deps: CommandDeps = {
+    ...h.deps,
+    roots: [{ dir: join(h.deps.roots[0]!.dir, "nope"), source: "user" }],
+  };
+  await runSubprofile("list", deps);
+  assert.ok(h.notes.some((n) => n.msg === "档目录：（未找到）"));
+});
+
 test("<name> 直切成功 → 成功 notify + 刷新一次", async () => {
   const settings = JSON.stringify({ theme: "dark", subagents: { old: 1 } });
   const h = harness({ "kimi.json": KIMI }, settings);
