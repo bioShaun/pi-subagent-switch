@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import type { FsLike } from "./fs.ts";
-import { formatStamp } from "./fs.ts";
+import { formatStamp, writeBackupFile } from "./fs.ts";
 import type { SubagentsValue } from "./profiles.ts";
-import { validateSubagents } from "./schema.ts";
+import { ProfileError, validateSubagents } from "./schema.ts";
 
 /** 用户档写入失败（目录缺失且无法创建、档名非法等）。 */
 export class ProfileStoreError extends Error {
@@ -82,7 +82,7 @@ export interface SaveProfileResult {
  * 不做并发指纹比对：与 settings-store 相同的尽力原子写，不扩大并发承诺。
  */
 export function saveUserProfile(
-  deps: { fs: FsLike; dir: string; now?: () => Date },
+  deps: { fs: FsLike; dir: string; now?: () => Date; maxBackups?: number },
   name: string,
   value: SubagentsValue,
 ): SaveProfileResult {
@@ -116,8 +116,13 @@ export function saveUserProfile(
   let backupPath: string | undefined;
   if (existed) {
     const stamp = formatStamp((deps.now ?? (() => new Date()))());
-    backupPath = `${target}.bak-${stamp}`;
-    fs.writeFileSync(backupPath, raw ?? Buffer.alloc(0), { flag: "wx", mode: 0o600 });
+    backupPath = writeBackupFile(
+      fs,
+      target,
+      raw ?? Buffer.alloc(0),
+      stamp,
+      deps.maxBackups,
+    );
   }
 
   const data = JSON.stringify(value, null, 2) + "\n";
@@ -138,4 +143,60 @@ export function saveUserProfile(
   }
 
   return { path: target, backupPath, bytes: Buffer.byteLength(data) };
+}
+
+export interface DeleteProfileResult {
+  readonly name: string;
+  readonly path: string;
+  readonly backupPath: string;
+  /** 若 packageDirs 中存在同名预置档，删除用户档后自动恢复为该内置档，此处为 true。 */
+  readonly restoredPackageProfile: boolean;
+}
+
+export function deleteUserProfile(
+  deps: {
+    fs: FsLike;
+    dir: string;
+    packageDirs?: readonly string[];
+    now?: () => Date;
+    maxBackups?: number;
+  },
+  name: string,
+): DeleteProfileResult {
+  const clean = name.trim().replace(/\.json$/i, "");
+  assertProfileName(clean);
+
+  const target = join(deps.dir, `${clean}.json`);
+  const exists = deps.fs.existsSync(target);
+  if (!exists) {
+    const isPackageProfile = (deps.packageDirs ?? []).some((d) =>
+      deps.fs.existsSync(join(d, `${clean}.json`)),
+    );
+    if (isPackageProfile) {
+      throw new ProfileStoreError(`档 "${clean}" 是内置只读档，不能删除`);
+    }
+    throw new ProfileError("not-found", `未找到用户档 "${clean}"`, { profile: clean });
+  }
+
+  const raw = deps.fs.readFileSync(target);
+  const stamp = formatStamp((deps.now ?? (() => new Date()))());
+  const backupPath = writeBackupFile(
+    deps.fs,
+    target,
+    raw,
+    stamp,
+    deps.maxBackups,
+  );
+  deps.fs.unlinkSync(target);
+
+  const restoredPackageProfile = (deps.packageDirs ?? []).some((d) =>
+    deps.fs.existsSync(join(d, `${clean}.json`)),
+  );
+
+  return {
+    name: clean,
+    path: target,
+    backupPath,
+    restoredPackageProfile,
+  };
 }

@@ -1,11 +1,11 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeFs from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const TMP = join(ROOT, ".tmp", "20261106-0009-subagent-switch-implementation");
+const TMP = join(ROOT, ".tmp", "extension");
 const KIMI = JSON.stringify({ defaultModel: "kimi-coding/k3.1-pro", agentOverrides: { w: { model: "k" } } });
 
 // 扩展在模块加载时解析路径，必须先设置 env 再动态 import。
@@ -118,14 +118,15 @@ test("注册 /subprofile、补全、session_start 刷新与 overlay:false 内联
   assert.ok(h.statuses.some((s) => s.k === "pi-subagent-switch" && s.t === "subagents: kimi"));
 
   // 无参 → 实际执行 custom factory，options.overlay === false
-  // 先把 settings 改为 custom，使 Enter 选择 kimi 触发真实写入
+  // 先把 settings 改为 custom，使选择 kimi 触发真实写入
   nodeFs.writeFileSync(settingsPath, JSON.stringify({ theme: "dark", subagents: { defaultModel: "custom/x" } }));
-  h.setSimulate("enter");
+  // profiles 按名合并含 [claude, gpt, kimi, local]，下移 2 次到达 kimi
+  h.setCustomKeys([["j", "j", "\r"]]);
   await h.commands[0]!.options.handler("", h.ctx);
   assert.equal(h.customOptions.length, 1);
   assert.equal(h.customOptions[0]!.overlay, false);
   assert.ok(h.comps.length === 1);
-  assert.ok(h.notes.some((n) => n.m.includes("已切换到档")));
+  assert.ok(h.notes.some((n) => n.m.includes("已切换到档") && n.m.includes("kimi")));
   // 命令结束后刷新状态栏
   assert.ok(h.statuses.some((s) => s.t === "subagents: kimi"));
 });
@@ -179,7 +180,7 @@ test("/subprofile new：向导真实走 input/select/custom，仅创建写入用
   // 会话1：w:thinking → "high"（真实改动一个字段，使新档与 settings 内容可区分）；
   // 会话2：next。
   h.setCustomKeys([
-    ["\x1b[B", "\x1b[B", "\x1b[B", "\r"],
+    ["\x1b[B", "\x1b[B", "\x1b[B", "\t", "\r"],
     ["\x1b[B", "\r"],
   ]);
   const created = join(userProfiles, "e2e-ext.json");
@@ -206,7 +207,7 @@ test("主面板动作行进向导：选择器按 n → new 向导启动", async 
   ext(h.fakePi as any);
   h.setInputs(["panel-new"]);
   h.setSelects(["kimi", "仅创建"]);
-  h.setCustomKeys([["n"], ["\x1b[B", "\x1b[B", "\x1b[B", "\x1b[B", "\r"]]);
+  h.setCustomKeys([["n"], ["\x1b[A", "\r"]]);
   const created = join(userProfiles, "panel-new.json");
   try {
     await h.commands[0]!.options.handler("", h.ctx);
@@ -229,4 +230,13 @@ test("非 TUI 模式 new/edit → 警告且不调用 input/select/custom", async
   assert.equal(h.selectsSeen.length, 0);
   assert.equal(h.comps.length, 0);
   assert.ok(h.notes.filter((n) => n.l === "warning" && n.m.includes("TUI")).length >= 2);
+});
+
+after(() => {
+  nodeFs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    nodeFs.rmdirSync(join(ROOT, ".tmp"));
+  } catch {
+    // 其它并发测试文件尚未结束时忽略
+  }
 });

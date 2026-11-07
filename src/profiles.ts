@@ -57,6 +57,10 @@ export function resolveProfileDirs(opts: {
 export function loadProfiles(deps: LoadDeps): ProfileSet {
   const { fs, roots } = deps;
   const errors: ProfileError[] = [];
+  const loaded: Profile[] = [];
+  const seenNames = new Set<string>();
+  let usedDir: ProfileRoot | undefined;
+
   for (const root of roots) {
     // existsSync 抛错属异常，向上冒泡（refreshStatus 借此降级为 "subagents: ?"）；
     // 目录不存在（false）或 readdirSync 抛错则视为「无档」，继续下一个候选。
@@ -69,9 +73,11 @@ export function loadProfiles(deps: LoadDeps): ProfileSet {
     } catch {
       continue;
     }
-    const loaded: Profile[] = [];
+    let rootContributed = false;
     for (const f of names) {
       const name = stem(f);
+      if (seenNames.has(name)) continue;
+      seenNames.add(name);
       const path = join(root.dir, f);
       try {
         let raw: Buffer;
@@ -102,16 +108,17 @@ export function loadProfiles(deps: LoadDeps): ProfileSet {
           summary,
           source: root.source,
         });
+        rootContributed = true;
       } catch (e) {
         errors.push(asProfileError(e, name));
       }
     }
-    if (loaded.length > 0) {
-      loaded.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-      return { profiles: loaded, errors, dirs: roots, usedDir: root };
+    if (rootContributed && usedDir === undefined) {
+      usedDir = root;
     }
   }
-  return { profiles: [], errors, dirs: roots, usedDir: undefined };
+  loaded.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return { profiles: loaded, errors, dirs: roots, usedDir };
 }
 
 /** 名字大小写敏感；允许省略 ".json"；同名损坏档抛原始错误，完全不存在才 not-found。 */

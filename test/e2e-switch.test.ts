@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeFs from "node:fs";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import { readSettings, writeSettings, SettingsStoreError } from "../src/settings
 
 const fs = nodeFs as unknown as FsLike;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const TMP = join(ROOT, ".tmp", "20261106-0009-subagent-switch-implementation");
+const TMP = join(ROOT, ".tmp", "e2e-switch");
 const FIXTURE = join(ROOT, "test", "fixtures", "settings.sample.json");
 const PROFILES = join(ROOT, "profiles");
 
@@ -84,4 +84,13 @@ test("并发修改检测：读快照后手改文件 → writeSettings 抛 Settin
     SettingsStoreError,
   );
   assert.equal(nodeFs.readFileSync(p, "utf8"), tampered);
+});
+
+after(() => {
+  nodeFs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    nodeFs.rmdirSync(join(ROOT, ".tmp"));
+  } catch {
+    // 其它并发测试文件尚未结束时忽略
+  }
 });

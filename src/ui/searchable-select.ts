@@ -80,7 +80,14 @@ export function createSearchableSelect(
         }
         if (key === "enter") {
           const selected = matches[cursor];
-          if (selected !== undefined) onDone(selected);
+          if (selected !== undefined) {
+            onDone(selected);
+            return;
+          }
+          const custom = query.trim();
+          if (custom.length > 0) {
+            onDone(custom);
+          }
           return;
         }
         if (key === "escape" || key === "ctrl+c") {
@@ -107,7 +114,14 @@ export function createSearchableSelect(
           theme.fg("muted", `  ·  ${matches.length}/${options.length} 项`),
       ];
       if (matches.length === 0) {
-        lines.push(theme.fg("warning", "  没有匹配项，请修改关键字"));
+        const custom = query.trim();
+        if (custom.length > 0) {
+          lines.push(
+            theme.fg("warning", `  没有匹配项（按 Enter 使用自定义模型: "${custom}"）`),
+          );
+        } else {
+          lines.push(theme.fg("warning", "  没有匹配项，请直接输入自定义模型名称"));
+        }
       } else {
         const start = Math.max(
           0,

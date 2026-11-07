@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { framedPanel, padVisible } from "../src/ui/frame.ts";
+import { framedPanel, padVisible, truncateVisible } from "../src/ui/frame.ts";
 
 const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
 const marked = {
@@ -85,4 +85,12 @@ test("padVisible：按可见宽度补齐，宽字符与 ANSI 正确计算", () =
   assert.equal(visibleWidth(padVisible("\x1b[31mx\x1b[39m", 4)), 4);
   // 已超宽 → 原样返回（不截断，由调用方截）
   assert.equal(padVisible("abcdefgh", 3), "abcdefgh");
+});
+
+test("truncateVisible：可见宽度截断、末尾加…、宽字符不截半码点", () => {
+  assert.equal(truncateVisible("abcdef", 4), "abc…");
+  assert.equal(truncateVisible("abcdef", 10), "abcdef");
+  assert.equal(truncateVisible("abcdef", 0), "");
+  assert.equal(truncateVisible("abcdef", 1), "…");
+  assert.equal(truncateVisible("中文测试长字符串", 7), "中文测…");
 });

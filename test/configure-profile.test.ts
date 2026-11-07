@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeFs from "node:fs";
 import { join } from "node:path";
@@ -12,7 +12,7 @@ import type { ConfigureDeps, WizardUI } from "../src/configure-profile.ts";
 
 const fs = nodeFs as unknown as FsLike;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const TMP = join(ROOT, ".tmp", "20261106-0936-profile-wizard");
+const TMP = join(ROOT, ".tmp", "configure-profile");
 
 function tmp(label: string): string {
   nodeFs.mkdirSync(TMP, { recursive: true });
@@ -46,15 +46,15 @@ const CLAUDE = {
   agentOverrides: { oracle: { model: "tcuni-claude/claude-opus-5-5", thinking: "high" } },
 };
 
-// kimi 档 → 行 = defaultModel + oracle + worker + scout
-// 扁平项 = [batch, dm:m, oracle:m, oracle:t, worker:m, worker:t, scout:m, scout:t, next]
+// 2D 角色面板键定义
 const DOWN = "\x1b[B";
+const UP = "\x1b[A";
+const LEFT = "\x1b[D";
+const RIGHT = "\x1b[C";
+const TAB = "\t";
 const ENTER = "\r";
 const ESC = "\x1b";
-function pick(itemIdx: number): string[] {
-  return [DOWN.repeat(itemIdx), ENTER];
-}
-const NEXT = pick(8);
+const NEXT = [UP, ENTER];
 
 interface Note {
   m: string;
@@ -182,16 +182,26 @@ test("新建：自定义档名→模板→三角色不同 model/thinking→创�
       "创建并切换",
     ],
     customKeys: [
-      pick(2),
-      ["k3-256k", "\r"],
-      pick(1),
-      pick(1),
-      ["sonnet", "\r"],
-      pick(1),
-      pick(1),
-      ["terra", "\r"],
-      pick(1),
-      pick(1),
+      // 1. 从 batch 垂直切到 oracle:model (3 down: dm, maxT, oracle) -> Enter
+      [DOWN, DOWN, DOWN, ENTER],
+      // 2. searchable-select 选 oracle.model
+      ["k3-256k", ENTER],
+      // 3. 从 oracle:model 水平切到 oracle:thinking (Tab -> Enter)
+      [TAB, ENTER],
+      // 4. 从 oracle:thinking 垂直切到 worker:thinking，水平切回 worker:model (Down -> Left -> Enter)
+      [DOWN, LEFT, ENTER],
+      // 5. searchable-select 选 worker.model
+      ["sonnet", ENTER],
+      // 6. 从 worker:model 水平切到 worker:thinking (Tab -> Enter)
+      [TAB, ENTER],
+      // 7. 从 worker:thinking 垂直切到 scout:thinking，水平切回 scout:model (Down -> Left -> Enter)
+      [DOWN, LEFT, ENTER],
+      // 8. searchable-select 选 scout.model
+      ["terra", ENTER],
+      // 9. 从 scout:model 水平切到 scout:thinking (Tab -> Enter)
+      [TAB, ENTER],
+      // 10. 从 scout:thinking 垂直切到 next (Down -> Enter)
+      [DOWN, ENTER],
     ],
   });
   const out = await runConfigureWizard("new", h.deps);
@@ -274,7 +284,10 @@ test("新建·仅创建：写档但不动 settings；修改·仅保存：用户�
     userProfiles: { "mine.json": original },
     settings,
     selects: ["mine", "xhigh", "保存并切换"],
-    customKeys: [pick(5), pick(1)], // worker.thinking → 完成；第二次从保留的 cursor 5 出发
+    customKeys: [
+      [DOWN, DOWN, DOWN, DOWN, TAB, ENTER], // worker.thinking
+      [DOWN, ENTER], // 完成
+    ],
   });
   const out2 = await runConfigureWizard("edit", h2.deps);
   assert.equal(out2.status, "saved");
@@ -297,7 +310,11 @@ test("修改包内档 → 复制到用户根后修改，包内档逐字节不动
     pkgProfiles: { "kimi.json": kimiRaw },
     settings: JSON.stringify({ subagents: KIMI }),
     selects: ["kimi", "仅保存"],
-    customKeys: [pick(1), ["terra", "\r"], pick(7)], // defaultModel:model → 完成
+    customKeys: [
+      [DOWN, ENTER], // defaultModel:model
+      ["terra", "\r"],
+      [UP, UP, ENTER], // 完成（从 defaultModel 回到 batch 再到 next）
+    ],
   });
   const out = await runConfigureWizard("edit", h.deps);
   assert.equal(out.status, "saved");
@@ -318,13 +335,13 @@ test("批量应用同一模型→单角色覆盖→恢复原值（批量后仍�
     inputs: ["batch-demo"],
     selects: ["kimi", "仅创建"],
     customKeys: [
-      pick(0),
+      [ENTER], // 批量行
       ["terra", "\r"],
-      pick(2),
+      [DOWN, DOWN, DOWN, ENTER], // oracle:model
       ["m/spec", "\r"],
-      pick(2),
+      [DOWN, ENTER], // worker:model
       ["恢复原值", "\r"],
-      pick(4),
+      [DOWN, DOWN, ENTER], // next 完成行
     ],
   });
   const out = await runConfigureWizard("new", h.deps);
@@ -378,7 +395,12 @@ test("无可用模型：model 选择降级为警告且不挂起；thinking 仍�
     settings: JSON.stringify({ subagents: {} }),
     inputs: ["nomodel"],
     selects: ["kimi", "max", "仅创建"],
-    customKeys: [pick(1), pick(2), pick(5)], // defaultModel:model(跳过) → oracle:thinking → 完成
+    customKeys: [
+      [DOWN, ENTER], // defaultModel:model -> 报警提示并打开 searchableSelect
+      [ESC], // 取消 searchableSelect 返回
+      [DOWN, DOWN, TAB, ENTER], // oracle:thinking -> 打开 select 选择 max
+      [DOWN, DOWN, DOWN, ENTER], // next -> 完成
+    ],
     models: [],
   });
   const out = await runConfigureWizard("new", h.deps);
@@ -402,11 +424,24 @@ test("从模型搜索 Esc 返回后保留原单元格光标，再次 Esc 取消�
   const h = harness({
     userProfiles: { "mine.json": original },
     selects: ["mine"],
-    customKeys: [pick(4), [ESC], [ESC]], // worker.model → 搜索返回 → 角色面板取消
+    customKeys: [
+      [DOWN, DOWN, DOWN, DOWN, ENTER], // worker.model (cursor 6)
+      [ESC],
+      [ESC],
+    ],
   });
   const out = await runConfigureWizard("edit", h.deps);
   assert.equal(out.status, "cancelled");
   assert.equal(h.comps.length, 3);
-  assert.equal((h.comps[2] as { cursor: number }).cursor, 4);
+  assert.equal((h.comps[2] as { cursor: number }).cursor, 6);
   assert.equal(nodeFs.readFileSync(join(h.userDir, "mine.json"), "utf8"), original);
+});
+
+after(() => {
+  nodeFs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    nodeFs.rmdirSync(join(ROOT, ".tmp"));
+  } catch {
+    // 其它并发测试文件尚未结束时忽略
+  }
 });

@@ -103,14 +103,14 @@ function selectModel(
   ui: WizardUI,
   title: string,
   models: readonly string[],
-  current?: string,
+  current?: string | null,
 ): Promise<string | undefined> {
   return ui.custom<string | undefined>(
     (_tui, theme, _kb, done) =>
       createSearchableSelect({
         title,
         options: [...models, REVERT_OPTION],
-        initialValue: current,
+        initialValue: current ?? undefined,
         theme: roleEditorTheme(theme),
         onDone: done,
       }),
@@ -149,8 +149,7 @@ async function editRoles(
     if (action.type === "next") return { rows, sourceRows, touched };
     if (action.type === "batch") {
       if (models.length === 0) {
-        ui.notify("modelRegistry.getAvailable() 无可用模型，无法批量应用", "warning");
-        continue;
+        ui.notify("modelRegistry.getAvailable() 无可用模型，可直接输入自定义模型名", "warning");
       }
       const sel = await selectModel(ui, `批量设置 model · ${rows.length} 个配置`, models);
       if (sel === undefined) continue;
@@ -161,8 +160,7 @@ async function editRoles(
     const row = rows[action.row];
     if (!row) continue;
     if (action.field === "model" && models.length === 0) {
-      ui.notify("modelRegistry.getAvailable() 无可用模型，model 不可选", "warning");
-      continue;
+      ui.notify("modelRegistry.getAvailable() 无可用模型，可直接输入自定义模型名", "warning");
     }
     const sel =
       action.field === "model"
@@ -176,7 +174,8 @@ async function editRoles(
       revertField(rows, sourceRows, touched, action.row, action.field);
       continue;
     }
-    row[action.field] = sel;
+    if (action.field === "model") row.model = sel;
+    else row.thinking = sel;
     touched.add(touchedKey(action.row, action.field));
   }
 }

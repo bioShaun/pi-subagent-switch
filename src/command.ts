@@ -7,7 +7,7 @@ import { SettingsStoreError } from "./settings-store.ts";
 import { detectCurrentProfile } from "./current-profile.ts";
 import type { CurrentProfile } from "./current-profile.ts";
 import { applyProfile } from "./apply-profile.ts";
-import { ProfileStoreError } from "./profile-store.ts";
+import { ProfileStoreError, deleteUserProfile } from "./profile-store.ts";
 import type { SelectorResult } from "./ui/profile-selector.ts";
 
 export type { SelectorResult } from "./ui/profile-selector.ts";
@@ -22,6 +22,8 @@ export interface CommandDeps {
   readonly openSelector: (state: SelectorState) => Promise<SelectorResult | undefined>;
   /** 新建/修改档配置向导（adapter 接 ctx.ui + modelRegistry；非 TUI 降级警告）。 */
   readonly openConfigWizard: (kind: "new" | "edit") => Promise<void>;
+  /** 删除前二次确认（非 TUI 降级返回 false）。 */
+  readonly confirmDelete?: (name: string) => Promise<boolean>;
   readonly notify: (message: string, level: NotifyLevel) => void;
   /** 每次命令结束后回调（adapter 接 refreshStatus），含 list、帮助、取消与失败。 */
   readonly onAfterCommand: () => void;
@@ -33,15 +35,32 @@ export interface SelectorState {
 }
 
 export const USAGE =
-  "用法：/subprofile [name|new|edit|list]\n" +
-  "  /subprofile          → 打开主面板（切换 / 新建 / 修改）\n" +
+  "用法：/subprofile [name|new|edit|delete|rm|list]\n" +
+  "  /subprofile          → 打开主面板（切换 / 新建 / 修改 / 删除）\n" +
   "  /subprofile kimi     → 直接切换到 kimi 档\n" +
   "  /subprofile new      → 新建档向导\n" +
   "  /subprofile edit     → 修改档向导\n" +
+  "  /subprofile delete <name> → 删除用户档（可简写 rm）\n" +
   "  /subprofile list     → 列出所有档与当前档";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function deleteProfileCmd(rawName: string, deps: CommandDeps): void {
+  const userRoot = deps.roots.find((r) => r.source === "user");
+  const packageDirs = deps.roots.filter((r) => r.source === "package").map((r) => r.dir);
+  if (!userRoot) {
+    deps.notify("未找到可写的用户档目录（roots 无 user 根）", "error");
+    return;
+  }
+  const res = deleteUserProfile(
+    { fs: deps.fs, dir: userRoot.dir, packageDirs },
+    rawName,
+  );
+  const backup = basename(res.backupPath);
+  const restored = res.restoredPackageProfile ? "，已恢复为同名内置档" : "";
+  deps.notify(`已删除用户档 "${res.name}"（备份 ${backup}）${restored}`, "info");
 }
 
 async function switchTo(name: string, set: ProfileSet, deps: CommandDeps): Promise<void> {
@@ -69,6 +88,20 @@ export async function runSubprofile(args: string, deps: CommandDeps): Promise<vo
       return;
     }
     const parts = trimmed === "" ? [] : trimmed.split(/\s+/);
+
+    if (parts[0] === "delete" || parts[0] === "rm") {
+      if (parts.length === 1) {
+        deps.notify(`请指定要删除的档名：/subprofile delete <name>\n${USAGE}`, "warning");
+        return;
+      }
+      if (parts.length > 2) {
+        deps.notify(`参数过多：${USAGE}`, "warning");
+        return;
+      }
+      deleteProfileCmd(parts[1]!, deps);
+      return;
+    }
+
     if (parts.length > 1) {
       deps.notify(`参数过多：${USAGE}`, "warning");
       return;
@@ -126,6 +159,22 @@ export async function runSubprofile(args: string, deps: CommandDeps): Promise<vo
         await switchTo(picked.name, set, deps);
         return;
       }
+      if (picked.kind === "delete") {
+        const target = set.profiles.find((p) => p.name === picked.name);
+        if (target && target.source === "package") {
+          deps.notify(`档 "${picked.name}" 是内置只读档，不能删除`, "warning");
+          return;
+        }
+        if (deps.confirmDelete) {
+          const ok = await deps.confirmDelete(picked.name);
+          if (!ok) {
+            deps.notify("已取消删除", "info");
+            return;
+          }
+        }
+        deleteProfileCmd(picked.name, deps);
+        return;
+      }
       await deps.openConfigWizard(picked.kind);
       return;
     }
@@ -150,12 +199,25 @@ export async function runSubprofile(args: string, deps: CommandDeps): Promise<vo
   }
 }
 
-/** 供 getArgumentCompletions：按 prefix 过滤档名，new/edit/list 子命令放最后。 */
+/** 供 getArgumentCompletions：按 prefix 过滤档名，new/edit/delete/list 子命令放最后。 */
 export function completeProfiles(
   prefix: string,
   deps: { fs: FsLike; roots: readonly ProfileRoot[] },
 ): Array<{ value: string; label: string; description?: string }> {
   const set = loadProfiles({ fs: deps.fs, roots: deps.roots });
+  const deleteMatch = prefix.match(/^(delete|rm)\s+(.*)$/i);
+  if (deleteMatch) {
+    const cmd = deleteMatch[1]!;
+    const argPrefix = deleteMatch[2]!;
+    return set.profiles
+      .filter((p) => p.source === "user" && p.name.startsWith(argPrefix))
+      .map((p) => ({
+        value: `${cmd} ${p.name}`,
+        label: p.name,
+        description: p.summary.defaultModel,
+      }));
+  }
+
   const items = set.profiles
     .filter((p) => p.name.startsWith(prefix))
     .map((p) => ({
@@ -168,6 +230,12 @@ export function completeProfiles(
   }
   if ("edit".startsWith(prefix) || prefix === "") {
     items.push({ value: "edit", label: "edit", description: "修改档向导" });
+  }
+  if ("delete".startsWith(prefix) || prefix === "") {
+    items.push({ value: "delete", label: "delete", description: "删除用户档" });
+  }
+  if ("rm".startsWith(prefix) && prefix !== "") {
+    items.push({ value: "rm", label: "rm", description: "删除用户档" });
   }
   if ("list".startsWith(prefix) || prefix === "") {
     items.push({ value: "list", label: "list", description: "列出所有档与当前档" });

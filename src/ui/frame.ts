@@ -23,6 +23,24 @@ export function padVisible(s: string, n: number): string {
   return w >= n ? s : s + " ".repeat(n - w);
 }
 
+/** 按可见宽度截断并以 … 结尾；ANSI 串降级为 truncateToWidth。 */
+export function truncateVisible(s: string, maxWidth: number): string {
+  const max = Math.max(0, Math.floor(maxWidth));
+  if (max === 0) return "";
+  if (visibleWidth(s) <= max) return s;
+  if (max === 1) return "…";
+  if (s.includes("\x1b")) return truncateToWidth(s, max);
+  let acc = "";
+  let w = 0;
+  for (const ch of s) {
+    const cw = visibleWidth(ch);
+    if (w + cw > max - 1) break;
+    acc += ch;
+    w += cw;
+  }
+  return `${acc}…`;
+}
+
 /**
  * 共用的圆角面板边框（三个内联面板复用）：
  *   ╭─ 标题 ────────╮

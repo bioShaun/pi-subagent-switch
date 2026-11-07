@@ -55,15 +55,29 @@ test("方向键回绕，Enter 返回过滤后的选中项", () => {
   assert.deepEqual(done, ["tcuni-claude/claude-sonnet-5-5"]);
 });
 
-test("无匹配时 Enter 不提交；Esc 返回 undefined", () => {
-  const done: Array<string | undefined> = [];
-  const c = make(undefined, done);
-  c.handleInput("not-found");
-  assert.ok(c.render(80).some((line) => line.includes("没有匹配项")));
-  c.handleInput("\r");
-  assert.deepEqual(done, []);
-  c.handleInput("\x1b");
-  assert.deepEqual(done, [undefined]);
+test("无匹配时：输入非空关键字按 Enter 提交自定义模型名，空关键字不提交；Esc 返回 undefined", () => {
+  // 1. 非空关键字无匹配项 → 按 Enter 直接采纳 query.trim()
+  const done1: Array<string | undefined> = [];
+  const c1 = make(undefined, done1);
+  c1.handleInput("my-custom/model-42");
+  assert.ok(c1.render(80).some((line) => line.includes("使用自定义模型: \"my-custom/model-42\"")));
+  c1.handleInput("\r");
+  assert.deepEqual(done1, ["my-custom/model-42"]);
+
+  // 2. 空列表且空关键字 → 按 Enter 不提交
+  const done2: Array<string | undefined> = [];
+  const c2 = createSearchableSelect({
+    title: "custom",
+    options: [],
+    theme,
+    onDone: (v) => done2.push(v),
+  });
+  c2.handleInput("\r");
+  assert.deepEqual(done2, []);
+
+  // 3. Esc 返回 undefined
+  c2.handleInput("\x1b");
+  assert.deepEqual(done2, [undefined]);
 });
 
 test("长列表滚动显示匹配位置，窄终端每行不超宽", () => {

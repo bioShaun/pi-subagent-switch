@@ -7,15 +7,11 @@
     "reviewer": {
       "model": "tcuni-claude/claude-opus-5-5",
       "thinking": "high",
-      "subagentOnlyExtensions": [
-        "/home/tcuni-claw/.pi/agent/git/github.com/bioShaun/pi-planner-only/reviewer-git.ts"
-      ],
       "tools": ["read", "grep", "find", "ls", "watchdog_diff", "contact_supervisor", "git_review"]
     },
     "worker": {
       "model": "tcuni-claude/claude-sonnet-5-5",
       "thinking": "medium",
-      "subagentOnlyExtensions": ["/public/config/pi/shared/pi-apply-patch/src/index.ts"],
       "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor", "apply_patch"],
       "mutationTools": ["apply_patch"]
     },

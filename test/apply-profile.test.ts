@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeFs from "node:fs";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import { ProfileError } from "../src/schema.ts";
 
 const fs = nodeFs as unknown as FsLike;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const TMP = join(ROOT, ".tmp", "20261106-0009-subagent-switch-implementation");
+const TMP = join(ROOT, ".tmp", "apply-profile");
 
 function tmp(label: string): string {
   nodeFs.mkdirSync(TMP, { recursive: true });
@@ -101,4 +101,60 @@ test("找不到档 → ProfileError(not-found)，不写盘", () => {
     (e: unknown) => e instanceof ProfileError && e.kind === "not-found",
   );
   assert.equal(nodeFs.readFileSync(settingsPath, "utf8"), raw);
+});
+
+test("loadProfiles 后磁盘上的档文件被手改：合法修改 → 写入新内容", () => {
+  const d = tmp("hotchange");
+  put(d, "kimi.json", JSON.stringify(KIMI));
+  const settingsPath = join(d, "settings.json");
+  nodeFs.writeFileSync(settingsPath, JSON.stringify({ subagents: { old: 1 } }));
+  const set = loadProfiles({ fs, roots: [{ dir: d, source: "user" }] });
+
+  // 模拟外部手改磁盘上的 kimi.json
+  const updatedKimi = {
+    defaultModel: "kimi-coding/k4.0",
+    agentOverrides: { worker: { model: "kimi-coding/k4.0" } },
+  };
+  nodeFs.writeFileSync(join(d, "kimi.json"), JSON.stringify(updatedKimi));
+
+  const res = applyProfile({ fs, settingsPath, set, now }, "kimi");
+  assert.equal(res.changed, true);
+  assert.equal(res.defaultModel, "kimi-coding/k4.0");
+
+  const written = JSON.parse(nodeFs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+  assert.deepEqual(written["subagents"], updatedKimi);
+});
+
+test("loadProfiles 后磁盘上的档文件被手改：手改为非法 JSON / 非法 schema → 抛 ProfileError 且不写盘", () => {
+  const d = tmp("hotbad");
+  put(d, "kimi.json", JSON.stringify(KIMI));
+  const settingsPath = join(d, "settings.json");
+  const rawSettings = JSON.stringify({ subagents: { old: 1 } });
+  nodeFs.writeFileSync(settingsPath, rawSettings);
+  const set = loadProfiles({ fs, roots: [{ dir: d, source: "user" }] });
+
+  // 1. 手改为非法 JSON
+  nodeFs.writeFileSync(join(d, "kimi.json"), "{ invalid json");
+  assert.throws(
+    () => applyProfile({ fs, settingsPath, set, now }, "kimi"),
+    (e: unknown) => e instanceof ProfileError && e.kind === "invalid-json",
+  );
+  assert.equal(nodeFs.readFileSync(settingsPath, "utf8"), rawSettings);
+
+  // 2. 手改为非法 schema
+  nodeFs.writeFileSync(join(d, "kimi.json"), JSON.stringify({ defaultThinking: "illegal-level" }));
+  assert.throws(
+    () => applyProfile({ fs, settingsPath, set, now }, "kimi"),
+    (e: unknown) => e instanceof ProfileError && e.kind === "invalid-schema",
+  );
+  assert.equal(nodeFs.readFileSync(settingsPath, "utf8"), rawSettings);
+});
+
+after(() => {
+  nodeFs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    nodeFs.rmdirSync(join(ROOT, ".tmp"));
+  } catch {
+    // 其它并发测试文件尚未结束时忽略
+  }
 });

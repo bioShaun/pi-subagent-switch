@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeFs from "node:fs";
 import { join } from "node:path";
@@ -9,7 +9,7 @@ import { ProfileError } from "../src/schema.ts";
 
 const fs = nodeFs as unknown as FsLike;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const TMP = join(ROOT, ".tmp", "20261106-0009-subagent-switch-implementation");
+const TMP = join(ROOT, ".tmp", "profiles");
 
 function tmp(label: string): string {
   nodeFs.mkdirSync(TMP, { recursive: true });
@@ -57,18 +57,44 @@ test("resolveProfileDirs: env 空白视为未设置", () => {
   assert.equal(dirs.length, 2);
 });
 
-test("user 有档 → 只用 user，package 被忽略", () => {
+test("按名合并（Per-profile Shadowing）：user 优先且未重名 package 保留，同名损坏档屏蔽", () => {
   const u = tmp("user");
   const p = tmp("pkg");
-  put(join(u, "subagent-profiles"), "a.json", VALID);
-  put(join(p, "profiles"), "b.json", VALID);
+  const userDir = join(u, "subagent-profiles");
+  const pkgDir = join(p, "profiles");
+
+  // a: 仅 user 有
+  put(userDir, "a.json", JSON.stringify({ defaultModel: "user/a", agentOverrides: {} }));
+  // b: 仅 package 有
+  put(pkgDir, "b.json", JSON.stringify({ defaultModel: "pkg/b", agentOverrides: {} }));
+  // c: 两处均有，user 覆盖 package
+  put(userDir, "c.json", JSON.stringify({ defaultModel: "user/c", agentOverrides: {} }));
+  put(pkgDir, "c.json", JSON.stringify({ defaultModel: "pkg/c", agentOverrides: {} }));
+  // d: user 损坏档，package 是合法档；损坏档屏蔽 package 且进 errors
+  put(userDir, "d.json", "{ broken json");
+  put(pkgDir, "d.json", JSON.stringify({ defaultModel: "pkg/d", agentOverrides: {} }));
+
   const set = loadProfiles({
     fs,
-    roots: roots([join(u, "subagent-profiles"), "user"], [join(p, "profiles"), "package"]),
+    roots: roots([userDir, "user"], [pkgDir, "package"]),
   });
-  assert.deepEqual(set.profiles.map((x) => x.name), ["a"]);
+
+  assert.deepEqual(set.profiles.map((x) => x.name), ["a", "b", "c"]);
+  const a = set.profiles.find((x) => x.name === "a");
+  const b = set.profiles.find((x) => x.name === "b");
+  const c = set.profiles.find((x) => x.name === "c");
+
+  assert.equal(a?.source, "user");
+  assert.equal(a?.summary.defaultModel, "user/a");
+  assert.equal(b?.source, "package");
+  assert.equal(b?.summary.defaultModel, "pkg/b");
+  assert.equal(c?.source, "user");
+  assert.equal(c?.summary.defaultModel, "user/c");
+
   assert.equal(set.usedDir?.source, "user");
-  assert.equal(set.errors.length, 0);
+  assert.equal(set.errors.length, 1);
+  assert.equal(set.errors[0]?.profile, "d");
+  assert.equal(set.errors[0]?.kind, "invalid-json");
 });
 
 test("user 空目录 → 回退 package", () => {
@@ -169,4 +195,13 @@ test("findProfile: 不存在 → not-found 且列出可用档名", () => {
       return true;
     },
   );
+});
+
+after(() => {
+  nodeFs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    nodeFs.rmdirSync(join(ROOT, ".tmp"));
+  } catch {
+    // 其它并发测试文件尚未结束时忽略
+  }
 });

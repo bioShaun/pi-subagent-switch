@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeFs from "node:fs";
 import { join, basename } from "node:path";
@@ -16,7 +16,7 @@ import {
 
 const fs = nodeFs as unknown as FsLike;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const TMP = join(ROOT, ".tmp", "20261106-0009-subagent-switch-implementation");
+const TMP = join(ROOT, ".tmp", "settings-store");
 
 function tmp(label: string): string {
   nodeFs.mkdirSync(TMP, { recursive: true });
@@ -121,16 +121,60 @@ test("writeSettings: 缺文件时 existed:false，不生成备份", () => {
   );
 });
 
-test("writeSettings: 同 stamp 备份 wx 冲突报错", () => {
+test("writeSettings: 同 stamp 备份自动追加 -1 序号不报错", () => {
   const dir = tmp("bakcollision");
   const p = join(dir, "settings.json");
   nodeFs.writeFileSync(p, '{"subagents":{"a":1}}');
   const snapshot = readSettings(fs, p);
-  writeSettings(fs, p, { subagents: { a: 2 } }, { snapshot, stamp: "same" });
+  const r1 = writeSettings(fs, p, { subagents: { a: 2 } }, { snapshot, stamp: "same" });
+  assert.equal(r1.backupPath, `${p}.bak-same`);
   const snap2 = readSettings(fs, p);
-  assert.throws(() =>
-    writeSettings(fs, p, { subagents: { a: 3 } }, { snapshot: snap2, stamp: "same" }),
-  );
+  const r2 = writeSettings(fs, p, { subagents: { a: 3 } }, { snapshot: snap2, stamp: "same" });
+  assert.equal(r2.backupPath, `${p}.bak-same-1`);
+  assert.ok(nodeFs.existsSync(r1.backupPath!));
+  assert.ok(nodeFs.existsSync(r2.backupPath!));
+});
+
+test("writeSettings: 超过 5 份历史备份自动清理", () => {
+  const dir = tmp("bakcleanup");
+  const p = join(dir, "settings.json");
+  nodeFs.writeFileSync(p, '{"subagents":{"a":0}}');
+  for (let i = 1; i <= 7; i++) {
+    const snap = readSettings(fs, p);
+    writeSettings(fs, p, { subagents: { a: i } }, { snapshot: snap, stamp: `20261107-10000${i}`, maxBackups: 5 });
+  }
+  const files = nodeFs.readdirSync(dir).filter((f) => f.startsWith("settings.json.bak-"));
+  assert.equal(files.length, 5);
+  assert.ok(!files.some((f) => f.includes("100001")));
+  assert.ok(!files.some((f) => f.includes("100002")));
+  assert.ok(files.some((f) => f.includes("100007")));
+});
+
+test("writeSettings: 父目录缺失时自动 mkdirSync 创建", () => {
+  const dir = join(tmp("mkdirtest"), "nested", "deep");
+  const p = join(dir, "settings.json");
+  const snapshot = readSettings(fs, p);
+  const res = writeSettings(fs, p, { subagents: { a: 1 } }, { snapshot, stamp: "s1" });
+  assert.ok(nodeFs.existsSync(p));
+  assert.equal(res.backupPath, undefined);
+  const s2 = readSettings(fs, p);
+  assert.deepEqual(s2.doc, { subagents: { a: 1 } });
+});
+
+test("writeSettings: 目标 settings.json 为软链接时保留软链接并写向真实路径", () => {
+  const dir = tmp("symlinktest");
+  const realFile = join(dir, "real-settings.json");
+  const linkFile = join(dir, "settings.json");
+  nodeFs.writeFileSync(realFile, '{"subagents":{"a":1}}');
+  nodeFs.symlinkSync(realFile, linkFile);
+
+  const snapshot = readSettings(fs, linkFile);
+  writeSettings(fs, linkFile, { subagents: { a: 2 } }, { snapshot, stamp: "s1" });
+
+  assert.ok(nodeFs.lstatSync(linkFile).isSymbolicLink());
+  assert.equal(nodeFs.readlinkSync(linkFile), realFile);
+  const updatedReal = JSON.parse(nodeFs.readFileSync(realFile, "utf8"));
+  assert.deepEqual(updatedReal, { subagents: { a: 2 } });
 });
 
 test("writeSettings: rename 失败 → 清理临时文件且 settings 不变", () => {
@@ -151,4 +195,13 @@ test("writeSettings: rename 失败 → 清理临时文件且 settings 不变", (
   );
   assert.equal(nodeFs.readFileSync(p, "utf8"), raw);
   assert.equal(nodeFs.readdirSync(dir).filter((n) => n.endsWith(".tmp")).length, 0);
+});
+
+after(() => {
+  nodeFs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    nodeFs.rmdirSync(join(ROOT, ".tmp"));
+  } catch {
+    // 其它并发测试文件尚未结束时忽略
+  }
 });

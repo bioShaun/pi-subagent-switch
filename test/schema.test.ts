@@ -127,6 +127,21 @@ test("maxThinking 非法值", () => {
   bad({ maxThinking: "bogus" });
 });
 
+test("defaultThinking 枚举值校验与非法值报错", () => {
+  ok({ defaultThinking: "medium" });
+  bad({ defaultThinking: "bogus" });
+  bad({ defaultThinking: "" });
+  bad({ defaultThinking: 123 });
+});
+
+test("agentOverrides.model 空串 / 空白非法", () => {
+  ok({ agentOverrides: { w: { model: "claude-3" } } });
+  ok({ agentOverrides: { w: { model: false } } });
+  bad({ agentOverrides: { w: { model: "" } } });
+  bad({ agentOverrides: { w: { model: "   " } } });
+  bad({ agentOverrides: { w: { model: 123 } } });
+});
+
 test("顶层字符串数组含空项非法", () => {
   bad({ defaultExtensions: ["a", " "] });
 });

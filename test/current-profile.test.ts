@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeFs from "node:fs";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import type { ProfileSet } from "../src/profiles.ts";
 
 const fs = nodeFs as unknown as FsLike;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const TMP = join(ROOT, ".tmp", "20261106-0009-subagent-switch-implementation");
+const TMP = join(ROOT, ".tmp", "current-profile");
 
 function tmp(label: string): string {
   nodeFs.mkdirSync(TMP, { recursive: true });
@@ -95,4 +95,13 @@ test("重复内容取 name 字典序最小，detail 注明重复档名", () => {
   assert.equal(c.name, "a");
   assert.equal(c.matched, true);
   assert.match(c.detail ?? "", /重复档：b/);
+});
+
+after(() => {
+  nodeFs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    nodeFs.rmdirSync(join(ROOT, ".tmp"));
+  } catch {
+    // 其它并发测试文件尚未结束时忽略
+  }
 });

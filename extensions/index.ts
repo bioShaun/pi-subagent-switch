@@ -117,6 +117,14 @@ function makeDeps(ctx: PiCommandContext, statusDeps: StatusDeps): CommandDeps {
         models: modelIds(ctx),
       });
     },
+    confirmDelete: async (name) => {
+      if (ctx.mode !== "tui") return false;
+      const choice = await ctx.ui.select(
+        `确认删除用户档 "${name}"？（删除前会自动备份）`,
+        ["确认删除", "取消"],
+      );
+      return choice === "确认删除";
+    },
     onAfterCommand: () => {
       refreshStatus(statusDeps, {
         hasUI: ctx.hasUI,

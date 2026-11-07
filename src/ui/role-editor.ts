@@ -1,14 +1,16 @@
 import { parseKey } from "../keys.ts";
 import { keyChunks } from "./profile-selector.ts";
-import { framedPanel, padVisible } from "./frame.ts";
+import { framedPanel, padVisible, truncateVisible } from "./frame.ts";
 import type { SubagentsValue } from "../profiles.ts";
 
 export type RoleField = "model" | "thinking";
 
-/** 一行 = defaultModel（thinking 恒 null）或一个角色。 */
+export const MAX_VISIBLE_ROLE_ROWS = 10;
+
+/** 一行 = defaultModel、maxThinking 或一个角色。 */
 export interface RoleRow {
   key: string;
-  model: string;
+  model: string | null;
   thinking: string | null;
 }
 
@@ -60,21 +62,30 @@ function asRec(v: unknown): Record<string, unknown> {
 }
 
 /**
- * 由 subagents 值生成行：首行 defaultModel（无 thinking 单元格），其后是
- * agentOverrides 的全部角色（保序）。角色无 model/thinking 时分别回落到
- * defaultModel / "medium"（对齐已验收原型）。
+ * 由 subagents 值生成行：
+ * Row 0: defaultModel (model: def, thinking: defThinking)
+ * Row 1: maxThinking (model: null, thinking: maxThinking)
+ * Row 2+: agentOverrides 的全部角色（保序）。角色无 model/thinking 时分别回落到
+ * defaultModel / (defThinking || "medium")。
  */
 export function initRoleRows(value: SubagentsValue): RoleRow[] {
   const obj = asRec(value);
   const def = typeof obj.defaultModel === "string" ? obj.defaultModel : "";
-  const rows: RoleRow[] = [{ key: "defaultModel", model: def, thinking: null }];
+  const defThinking = typeof obj.defaultThinking === "string" ? obj.defaultThinking : "";
+  const maxThinking = typeof obj.maxThinking === "string" ? obj.maxThinking : "";
+
+  const rows: RoleRow[] = [
+    { key: "defaultModel", model: def, thinking: defThinking },
+    { key: "maxThinking", model: null, thinking: maxThinking },
+  ];
+
   const ov = asRec(obj.agentOverrides);
   for (const key of Object.keys(ov)) {
     const o = asRec(ov[key]);
     rows.push({
       key,
       model: typeof o.model === "string" && o.model ? o.model : def,
-      thinking: typeof o.thinking === "string" && o.thinking ? o.thinking : "medium",
+      thinking: typeof o.thinking === "string" && o.thinking ? o.thinking : (defThinking || "medium"),
     });
   }
   return rows;
@@ -93,7 +104,12 @@ export function buildValue(
     const row = rows[ri];
     if (!row || (field !== "model" && field !== "thinking")) continue;
     if (row.key === "defaultModel") {
-      if (field === "model") v.defaultModel = row.model;
+      if (field === "model" && row.model) v.defaultModel = row.model;
+      if (field === "thinking" && row.thinking) v.defaultThinking = row.thinking;
+      continue;
+    }
+    if (row.key === "maxThinking") {
+      if (field === "thinking" && row.thinking) v.maxThinking = row.thinking;
       continue;
     }
     const ao = asRec(v.agentOverrides);
@@ -123,23 +139,25 @@ export function changeList(
       const src = sourceRows[ri];
       out.push({
         key: `${row.key}.${field}`,
-        from: src ? String(src[field] ?? "") : "",
-        to: String(row[field] ?? ""),
+        from: src && src[field] !== null ? String(src[field] ?? "") : "",
+        to: row[field] !== null ? String(row[field] ?? "") : "",
       });
     }
   });
   return out;
 }
 
-/** 批量应用同一 model 到全部行（记录 touched）。 */
+/** 批量应用同一 model 到全部可设置 model 的行（跳过 model === null 的行，记录 touched）。 */
 export function applyBatchModel(
   rows: RoleRow[],
   touched: Set<string>,
   model: string,
 ): void {
   rows.forEach((row, i) => {
-    row.model = model;
-    touched.add(touchedKey(i, "model"));
+    if (row.model !== null) {
+      row.model = model;
+      touched.add(touchedKey(i, "model"));
+    }
   });
 }
 
@@ -150,9 +168,11 @@ export function revertAllModels(
   touched: Set<string>,
 ): void {
   rows.forEach((row, i) => {
-    const src = sourceRows[i];
-    if (src) row.model = src.model;
-    touched.delete(touchedKey(i, "model"));
+    if (row.model !== null) {
+      const src = sourceRows[i];
+      if (src && src.model !== null) row.model = src.model;
+      touched.delete(touchedKey(i, "model"));
+    }
   });
 }
 
@@ -186,19 +206,96 @@ export function createRoleEditor(deps: RoleEditorDeps): RoleEditorComponent {
   const { rows, touched, title, theme, onDone } = deps;
   const items: FlatItem[] = [{ kind: "batch" }];
   rows.forEach((row, ri) => {
-    items.push({ kind: "cell", row: ri, field: "model" });
+    if (row.model !== null) items.push({ kind: "cell", row: ri, field: "model" });
     if (row.thinking !== null) items.push({ kind: "cell", row: ri, field: "thinking" });
   });
   items.push({ kind: "next" });
-  // row/field → 扁平下标，渲染时用
+
+  // row/field → 扁平下标，渲染与导航用
   const cellIdx = new Map<string, number>();
   items.forEach((it, i) => {
     if (it.kind === "cell") cellIdx.set(touchedKey(it.row, it.field), i);
   });
+
   let cursor = Math.max(0, Math.min(deps.initialCursor ?? 0, items.length - 1));
-  const move = (delta: number): void => {
-    cursor = (cursor + delta + items.length) % items.length;
+  let preferredField: RoleField = "model";
+  const initItem = items[cursor];
+  if (initItem && initItem.kind === "cell") {
+    preferredField = initItem.field;
+  }
+
+  const findRowCell = (ri: number, pref: RoleField): number | undefined => {
+    const direct = cellIdx.get(touchedKey(ri, pref));
+    if (direct !== undefined) return direct;
+    const other: RoleField = pref === "model" ? "thinking" : "model";
+    return cellIdx.get(touchedKey(ri, other));
+  };
+
+  const moveVertical = (delta: 1 | -1): void => {
+    const cur = items[cursor];
+    if (!cur) return;
+    if (cur.kind === "batch") {
+      if (delta === 1) {
+        cursor = findRowCell(0, preferredField) ?? items.length - 1;
+      } else {
+        cursor = items.length - 1;
+      }
+    } else if (cur.kind === "next") {
+      if (delta === 1) {
+        cursor = 0;
+      } else {
+        cursor = findRowCell(rows.length - 1, preferredField) ?? 0;
+      }
+    } else {
+      const nextRow = cur.row + delta;
+      if (nextRow < 0) {
+        cursor = 0;
+      } else if (nextRow >= rows.length) {
+        cursor = items.length - 1;
+      } else {
+        const targetIdx = findRowCell(nextRow, preferredField);
+        if (targetIdx !== undefined) {
+          cursor = targetIdx;
+        }
+      }
+    }
     deps.onCursorChange?.(cursor);
+  };
+
+  const moveHorizontal = (key: "left" | "right" | "tab"): void => {
+    const cur = items[cursor];
+    if (!cur) return;
+    if (cur.kind === "cell") {
+      if (key === "tab") {
+        const otherField: RoleField = cur.field === "model" ? "thinking" : "model";
+        const otherIdx = cellIdx.get(touchedKey(cur.row, otherField));
+        if (otherIdx !== undefined) {
+          cursor = otherIdx;
+          preferredField = otherField;
+          deps.onCursorChange?.(cursor);
+        } else {
+          cursor = (cursor + 1) % items.length;
+          const n = items[cursor];
+          if (n && n.kind === "cell") preferredField = n.field;
+          deps.onCursorChange?.(cursor);
+        }
+        return;
+      }
+      const targetField: RoleField = key === "left" ? "model" : "thinking";
+      if (cur.field !== targetField) {
+        const targetIdx = cellIdx.get(touchedKey(cur.row, targetField));
+        if (targetIdx !== undefined) {
+          cursor = targetIdx;
+          preferredField = targetField;
+          deps.onCursorChange?.(cursor);
+        }
+      }
+    } else if (key === "tab") {
+      cursor = (cursor + 1) % items.length;
+      const n = items[cursor];
+      if (n && n.kind === "cell") preferredField = n.field;
+      deps.onCursorChange?.(cursor);
+    }
   };
 
   const KEY_W = 16;
@@ -216,11 +313,23 @@ export function createRoleEditor(deps: RoleEditorDeps): RoleEditorComponent {
         const key = parseKey(chunk);
         if (key === undefined) continue;
         if (key === "up") {
-          move(-1);
+          moveVertical(-1);
           continue;
         }
         if (key === "down") {
-          move(1);
+          moveVertical(1);
+          continue;
+        }
+        if (key === "left") {
+          moveHorizontal("left");
+          continue;
+        }
+        if (key === "right") {
+          moveHorizontal("right");
+          continue;
+        }
+        if (key === "tab") {
+          moveHorizontal("tab");
           continue;
         }
         if (key === "enter") {
@@ -241,11 +350,19 @@ export function createRoleEditor(deps: RoleEditorDeps): RoleEditorComponent {
         }
         if (typeof key === "object") {
           if (key.char === "k") {
-            move(-1);
+            moveVertical(-1);
             continue;
           }
           if (key.char === "j") {
-            move(1);
+            moveVertical(1);
+            continue;
+          }
+          if (key.char === "h") {
+            moveHorizontal("left");
+            continue;
+          }
+          if (key.char === "l") {
+            moveHorizontal("right");
             continue;
           }
         }
@@ -271,33 +388,66 @@ export function createRoleEditor(deps: RoleEditorDeps): RoleEditorComponent {
       lines.push(
         theme.fg(
           "muted",
-          `  ${"角色".padEnd(KEY_W)}${"model".padEnd(MODEL_W)}${"thinking".padEnd(THINK_W)}`,
+          `  ${padVisible("角色", KEY_W)}${padVisible("model", MODEL_W)}${padVisible("thinking", THINK_W)}`,
         ),
       );
-      rows.forEach((row, ri) => {
+
+      let activeRow = 0;
+      if (current && current.kind === "cell") {
+        activeRow = current.row;
+      } else if (current && current.kind === "next") {
+        activeRow = rows.length - 1;
+      }
+      let start = 0;
+      let end = rows.length;
+      if (rows.length > MAX_VISIBLE_ROLE_ROWS) {
+        const half = Math.floor(MAX_VISIBLE_ROLE_ROWS / 2);
+        start = Math.max(0, Math.min(activeRow - half, rows.length - MAX_VISIBLE_ROLE_ROWS));
+        end = start + MAX_VISIBLE_ROLE_ROWS;
+      }
+
+      if (start > 0) {
+        lines.push(theme.fg("muted", `  ↑ 还有 ${start} 项`));
+      }
+
+      const cell = (
+        focused: boolean,
+        value: string | null,
+        isTouched: boolean,
+        colWidth: number,
+      ): string => {
+        const valStr = value || "—";
+        const maxValW = Math.max(1, colWidth - 2 - (isTouched ? 1 : 0) - 1);
+        const truncated = truncateVisible(valStr, maxValW);
+        const text = `${focused ? "▶ " : "  "}${truncated}`;
+        const styled = focused
+          ? theme.fg("accent", theme.bold(text))
+          : theme.fg("text", text);
+        // * 紧跟在值后（warning 色），其余列宽补空格
+        const marked = styled + (isTouched ? theme.fg("warning", "*") : "");
+        return padVisible(marked, colWidth);
+      };
+
+      for (let ri = start; ri < end; ri++) {
+        const row = rows[ri]!;
         const mFocused = cursor === cellIdx.get(touchedKey(ri, "model"));
         const tFocused = cursor === cellIdx.get(touchedKey(ri, "thinking"));
-        const cell = (
-          focused: boolean,
-          value: string,
-          isTouched: boolean,
-          colWidth: number,
-        ): string => {
-          const text = `${focused ? "▶ " : "  "}${value}`;
-          const styled = focused
-            ? theme.fg("accent", theme.bold(text))
-            : theme.fg("text", text);
-          // * 紧跟在值后（warning 色），其余列宽补空格
-          const marked = styled + (isTouched ? theme.fg("warning", "*") : "");
-          return padVisible(marked, colWidth);
-        };
-        const mSeg = cell(mFocused, row.model, touched.has(touchedKey(ri, "model")), MODEL_W);
+        const keyCol = padVisible(truncateVisible(row.key, KEY_W - 1), KEY_W);
+        const mSeg =
+          row.model === null
+            ? padVisible(theme.fg("text", "  —"), MODEL_W)
+            : cell(mFocused, row.model, touched.has(touchedKey(ri, "model")), MODEL_W);
         const tSeg =
           row.thinking === null
-            ? theme.fg("text", "  —")
+            ? padVisible(theme.fg("text", "  —"), THINK_W)
             : cell(tFocused, row.thinking, touched.has(touchedKey(ri, "thinking")), THINK_W);
-        lines.push(theme.fg("text", `· ${row.key.padEnd(KEY_W)}`) + mSeg + tSeg);
-      });
+        lines.push(theme.fg("text", `· ${keyCol}`) + mSeg + tSeg);
+      }
+
+      if (end < rows.length) {
+        lines.push(theme.fg("muted", `  ↓ 还有 ${rows.length - end} 项`));
+      }
+
       const nextFocused = current?.kind === "next";
       const nextText = `${nextFocused ? "▶ " : "· "}完成角色配置，继续 →`;
       lines.push(
@@ -306,7 +456,7 @@ export function createRoleEditor(deps: RoleEditorDeps): RoleEditorComponent {
           : theme.fg("text", nextText),
       );
       lines.push(
-        theme.fg("muted", "↑/↓ 或 j/k 移动 · Enter 选择/继续 · Esc 取消（零改动）"),
+        theme.fg("muted", "↑/↓ 切行 · ←/→/Tab 切列 · Enter 选择/继续 · Esc 取消（零改动）"),
       );
       return framedPanel({
         width,

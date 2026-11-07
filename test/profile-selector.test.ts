@@ -240,3 +240,42 @@ test("current 标记与 cursor 可分离：current 行 ● 为 success，cursor 
   assert.ok(moved[2]!.includes(A), "新 cursor 行应 accent");
   assert.ok(!moved[2]!.includes("●"), "新 cursor 行不是 current 行，不应有 ●");
 });
+
+test("按 d 键返回 { kind: 'delete', name }", () => {
+  const profiles = [mk("a", "m", 1), mk("to-del", "m", 1)];
+  const done: Array<SelectorResult | undefined> = [];
+  const c = createProfileSelector({ profiles, current: custom, theme, onDone: (r) => done.push(r) });
+  c.handleInput("j"); // cursor 到 to-del
+  c.handleInput("d");
+  assert.deepEqual(done, [{ kind: "delete", name: "to-del" }]);
+});
+
+test("超长档名与模型名 truncateVisible 截断不破坏边框与对齐", () => {
+  const superLongName = "very-long-profile-name-that-exceeds-column-width";
+  const superLongModel = "provider/very-long-model-name-with-many-sub-identifiers";
+  const profiles = [mk(superLongName, superLongModel, 8)];
+  const c = createProfileSelector({ profiles, current: custom, theme, onDone: () => {} });
+  const lines = c.render(80);
+  for (const l of lines) {
+    assert.ok(visibleWidth(l) <= 80, `too wide: ${l}`);
+  }
+  assert.ok(lines.some((l) => l.includes("…")), "超长内容应以 … 省略截断");
+});
+
+test("超过 10 个档时的视口滚动指示与滚动窗口", () => {
+  const profiles: Profile[] = [];
+  for (let i = 0; i < 15; i++) {
+    profiles.push(mk(`p${i.toString().padStart(2, "0")}`, `m${i}`, 1));
+  }
+  const c = createProfileSelector({ profiles, current: custom, theme, onDone: () => {} });
+  // 初始 cursor 0，只显示前 10 个，下方有指示
+  const topLines = c.render(80);
+  assert.ok(topLines.some((l) => l.includes("↓ 还有 5 项")));
+  assert.ok(!topLines.some((l) => l.includes("↑ 还有")));
+
+  // 移到第 12 项 (cursor 12)
+  for (let i = 0; i < 12; i++) c.handleInput("j");
+  assert.equal(c.cursor, 12);
+  const bottomLines = c.render(80);
+  assert.ok(bottomLines.some((l) => l.includes("↑ 还有")));
+});

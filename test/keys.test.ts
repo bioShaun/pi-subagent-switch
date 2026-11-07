@@ -37,8 +37,18 @@ test("Kitty / CSI-u：方向键、Enter、Escape、Ctrl+C 与 j/k", () => {
   assert.deepEqual(parseKey("\x1b[107u"), { char: "k" });
 });
 
+test("left / right / tab（ANSI、应用光标模式与 Kitty/CSI-u）", () => {
+  assert.equal(parseKey("\x1b[D"), "left");
+  assert.equal(parseKey("\x1bOD"), "left");
+  assert.equal(parseKey("\x1b[57417u"), "left");
+  assert.equal(parseKey("\x1b[C"), "right");
+  assert.equal(parseKey("\x1bOC"), "right");
+  assert.equal(parseKey("\x1b[57418u"), "right");
+  assert.equal(parseKey("\t"), "tab");
+  assert.equal(parseKey("\x1b[9u"), "tab");
+});
+
 test("无法识别或不支持的按键 → undefined", () => {
-  assert.equal(parseKey("\x1b[C"), undefined);
   assert.equal(parseKey("\x1b[1;2B"), undefined);
   assert.equal(parseKey("ab"), undefined);
   assert.equal(parseKey("\x01"), undefined);

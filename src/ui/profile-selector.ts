@@ -1,6 +1,6 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { parseKey } from "../keys.ts";
-import { framedPanel } from "./frame.ts";
+import { framedPanel, padVisible, truncateVisible } from "./frame.ts";
 import type { Profile } from "../profiles.ts";
 import type { CurrentProfile } from "../current-profile.ts";
 
@@ -43,11 +43,14 @@ export interface SelectorTheme {
   bold(text: string): string;
 }
 
-/** 主面板结果：切档，或进入新建/修改配置向导。 */
+export const MAX_VISIBLE_PROFILES = 10;
+
+/** 主面板结果：切档，或进入新建/修改配置向导，或删除用户档。 */
 export type SelectorResult =
   | { kind: "switch"; name: string }
   | { kind: "new" }
-  | { kind: "edit" };
+  | { kind: "edit" }
+  | { kind: "delete"; name: string };
 
 export interface ProfileSelectorDeps {
   readonly profiles: readonly Profile[];
@@ -142,6 +145,14 @@ export function createProfileSelector(deps: ProfileSelectorDeps): ProfileSelecto
             onDone({ kind: "edit" });
             return;
           }
+          if (key.char === "d") {
+            const p = profiles[cursor];
+            if (p) {
+              onDone({ kind: "delete", name: p.name });
+              return;
+            }
+            continue;
+          }
         }
         // 其它键忽略
       }
@@ -165,7 +176,20 @@ export function createProfileSelector(deps: ProfileSelectorDeps): ProfileSelecto
         });
       }
       const lines: string[] = [];
-      for (let i = 0; i < profiles.length; i++) {
+      let start = 0;
+      let end = profiles.length;
+      if (profiles.length > MAX_VISIBLE_PROFILES) {
+        const activeIdx = cursor < profiles.length ? cursor : profiles.length - 1;
+        const half = Math.floor(MAX_VISIBLE_PROFILES / 2);
+        start = Math.max(0, Math.min(activeIdx - half, profiles.length - MAX_VISIBLE_PROFILES));
+        end = start + MAX_VISIBLE_PROFILES;
+      }
+
+      if (start > 0) {
+        lines.push(theme.fg("muted", `  ↑ 还有 ${start} 项`));
+      }
+
+      for (let i = start; i < end; i++) {
         const p = profiles[i]!;
         const isCursor = i === cursor;
         const isCurrent = current.matched && p.name === current.name;
@@ -174,9 +198,11 @@ export function createProfileSelector(deps: ProfileSelectorDeps): ProfileSelecto
         const prefix = isCursor ? "▶ " : "  ";
         const countText = `${p.summary.overrideCount} overrides`;
         const markerText = isCurrent ? "  ●" : "";
+        const nameCol = padVisible(truncateVisible(p.name, 11), 12);
+        const modelCol = padVisible(truncateVisible(p.summary.defaultModel ?? "—", 21), 22);
         // 档名/模型列按剩余宽度截断，给 overrides 计数与 ● 标记留位
         const main = truncateToWidth(
-          `${prefix}${p.name.padEnd(12)}${(p.summary.defaultModel ?? "—").padEnd(22)}`,
+          `${prefix}${nameCol}${modelCol}`,
           Math.max(0, inner - countText.length - markerText.length),
         );
         const styledMain = isCursor
@@ -186,11 +212,16 @@ export function createProfileSelector(deps: ProfileSelectorDeps): ProfileSelecto
         const marker = isCurrent ? theme.fg("success", markerText) : "";
         lines.push(styledMain + count + marker);
       }
+
+      if (end < profiles.length) {
+        lines.push(theme.fg("muted", `  ↓ 还有 ${profiles.length - end} 项`));
+      }
+
       for (let a = 0; a < ACTIONS.length; a++) {
         const action = ACTIONS[a]!;
         const isCursor = profiles.length + a === cursor;
         const main = truncateToWidth(
-          `${isCursor ? "▶ " : "  "}${action.label.padEnd(12)}${action.desc}`,
+          `${isCursor ? "▶ " : "  "}${padVisible(action.label, 12)}${action.desc}`,
           inner,
         );
         lines.push(
@@ -198,7 +229,7 @@ export function createProfileSelector(deps: ProfileSelectorDeps): ProfileSelecto
         );
       }
       lines.push(
-        theme.fg("muted", "↑/↓ 选择 · Enter 确认 · Esc 取消 · n 新建 · e 修改"),
+        theme.fg("muted", "↑/↓ 选择 · Enter 确认 · Esc 取消 · n 新建 · e 修改 · d 删除"),
       );
       return framedPanel({ width, title: PANEL_TITLE, lines, theme });
     },

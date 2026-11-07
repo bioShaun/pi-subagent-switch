@@ -1,5 +1,5 @@
 import { dirname, basename, join } from "node:path";
-import { sha256 } from "./fs.ts";
+import { sha256, writeBackupFile } from "./fs.ts";
 import type { FsLike } from "./fs.ts";
 import type { SubagentsValue } from "./profiles.ts";
 
@@ -85,7 +85,7 @@ export function writeSettings(
   fs: FsLike,
   path: string,
   doc: Record<string, unknown>,
-  opts: { snapshot: SettingsSnapshot; stamp: string },
+  opts: { snapshot: SettingsSnapshot; stamp: string; maxBackups?: number },
 ): WriteResult {
   const { snapshot, stamp } = opts;
 
@@ -104,25 +104,46 @@ export function writeSettings(
     throw new SettingsStoreError("settings.json 在操作期间被修改，已中止；请重试");
   }
 
-  // 3) 备份：内容 = 步骤 1 的原始字节，mode 固定 0o600，flag wx（同秒冲突即报错）
-  const backupPath = backupPathFor(path, stamp);
+  // 3) 备份：防同秒冲突追加序号，自动保留最近历史备份
+  let backupPath: string | undefined;
   if (snapshot.existed) {
-    fs.writeFileSync(
-      backupPath,
+    backupPath = writeBackupFile(
+      fs,
+      path,
       currentRaw ?? snapshot.raw ?? Buffer.alloc(0),
-      { flag: "wx", mode: 0o600 },
+      stamp,
+      opts.maxBackups,
     );
   }
 
-  // 4) 同目录临时文件（flag wx，mode 保留原 mode 默认 0o600）→ rename 覆盖
+  // 4) Symlink 解析与父目录创建；同目录临时文件（flag wx，mode 保留原 mode 默认 0o600）→ rename 覆盖
+  let targetPath = path;
+  if (exists && typeof fs.realpathSync === "function") {
+    try {
+      targetPath = fs.realpathSync(path);
+    } catch {
+      targetPath = path;
+    }
+  }
+  const targetDir = dirname(targetPath);
+  if (!fs.existsSync(targetDir)) {
+    if (typeof fs.mkdirSync !== "function") {
+      throw new SettingsStoreError(`配置目录不存在且当前环境无法创建：${targetDir}`);
+    }
+    try {
+      fs.mkdirSync(targetDir, { recursive: true, mode: 0o700 });
+    } catch (e) {
+      throw new SettingsStoreError(`无法创建配置目录 ${targetDir}：${errMsg(e)}`);
+    }
+  }
   const tmp = join(
-    dirname(path),
-    `.${basename(path)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`,
+    targetDir,
+    `.${basename(targetPath)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`,
   );
   const data = JSON.stringify(doc, null, 2) + "\n";
   try {
     fs.writeFileSync(tmp, data, { flag: "wx", mode: snapshot.mode ?? 0o600 });
-    fs.renameSync(tmp, path);
+    fs.renameSync(tmp, targetPath);
   } catch (e) {
     try {
       fs.unlinkSync(tmp);
@@ -134,6 +155,6 @@ export function writeSettings(
 
   return {
     fingerprint: sha256(data),
-    backupPath: snapshot.existed ? backupPath : undefined,
+    backupPath,
   };
 }

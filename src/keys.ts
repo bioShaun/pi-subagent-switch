@@ -3,6 +3,9 @@ import { parseKey as parsePiKey } from "@earendil-works/pi-tui";
 export type KeyId =
   | "up"
   | "down"
+  | "left"
+  | "right"
+  | "tab"
   | "enter"
   | "escape"
   | "ctrl+c"
@@ -18,6 +21,9 @@ export function parseKey(data: string): KeyId | undefined {
   switch (key) {
     case "up":
     case "down":
+    case "left":
+    case "right":
+    case "tab":
     case "enter":
     case "escape":
     case "ctrl+c":
@@ -34,6 +40,9 @@ export function parseKey(data: string): KeyId | undefined {
     case "space":
       return { char: " " };
   }
+  if (data === "\t" || data === "\x1b[9u") return "tab";
+  if (data === "\x1b[D" || data === "\x1bOD" || data === "\x1b[57417u") return "left";
+  if (data === "\x1b[C" || data === "\x1bOC" || data === "\x1b[57418u") return "right";
   if (key !== undefined && [...key].length === 1 && !/[\u0000-\u001f\u007f]/.test(key)) {
     return { char: key };
   }

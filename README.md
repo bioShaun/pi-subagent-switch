@@ -12,13 +12,14 @@
 
 | 输入 | 行为 |
 | --- | --- |
-| `/subprofile` | 打开会话内联主面板：档列表（`↑/↓` 或 `j/k` 移动、`Enter` 切换、`Esc` 取消；当前档行尾 `●` 并加粗）+ `＋ 新建档` / `✎ 修改档` 两个动作行（快捷键 `n` / `e`） |
+| `/subprofile` | 打开会话内联主面板：档列表（`↑/↓` 或 `j/k` 移动、`Enter` 切换、`Esc` 取消；当前档行尾 `●` 并加粗）+ `＋ 新建档` / `✎ 修改档` 动作行（快捷键 `n` 新建、`e` 修改、`d` 删除选中用户档） |
 | `/subprofile kimi` | 直接切换到 `kimi` 档 |
 | `/subprofile new` | 新建档向导：档名 → 模板 → 角色配置 → 创建并切换 / 仅创建 / 取消 |
 | `/subprofile edit` | 修改档向导：选档 → 角色配置 → 保存并切换 / 仅保存 / 取消 |
+| `/subprofile delete <name>` / `rm` | 删除指定用户档（删除前自动备份，若曾覆盖内置同名档则自动恢复内置档） |
 | `/subprofile list` / `ls` | 逐条列出档名 / `defaultModel` / override 数 / 当前档标记，并提示档目录与来源 |
 | `/subprofile help` / `-h` / `--help` | 显示用法 |
-| `/subprofile <Tab>` | `getArgumentCompletions` 补全档名与 `new` / `edit` / `list` |
+| `/subprofile <Tab>` | `getArgumentCompletions` 补全档名与 `new` / `edit` / `delete` / `rm` / `list` |
 
 ### 配置向导（新建 / 修改）
 
@@ -66,11 +67,13 @@
 会给出「档名 + 字段路径」的可读错误且**不落盘**。单个档损坏不影响其它档，`list`
 会逐条告警，按名直切损坏档返回原始 JSON/schema 错误（不会误报为「档不存在」）。
 
-## 目录优先级（加载只读，向导只写用户目录）
+## 目录优先级（按名合并，向导只写用户目录）
 
 1. 环境变量 `PI_SUBAGENT_PROFILES_DIR`（设置后**不回退**；此时它就是向导的写入目录）
-2. `~/.pi/agent/subagent-profiles/*.json` — 用户档主位置；手写或向导写入（`0o600`）
-3. 包内 `profiles/*.json` — 随插件发布的 4 个示例档，仅当上面都没有可用档时兜底，永不写
+2. 未设置环境变量时，按名合并（Per-profile Shadowing）：
+   - `~/.pi/agent/subagent-profiles/*.json` — 用户档主位置；手写或向导写入（`0o600`）
+   - 包内 `profiles/*.json` — 随插件发布的 4 个示例档，永不写
+   - 同名档以用户档为准（用户同名损坏档屏蔽包内同名档）；未重名的包内预置档保留可见。
 
 只认 `*.json`（大小写不敏感），跳过以 `.` 开头的文件名。实际生效目录在
 `/subprofile list` 中显示为 `档目录：<dir> (<source>)`。
@@ -84,9 +87,8 @@
 | `claude` | `tcuni-claude/claude-opus-5-5` | 全 tcuni-claude 模型 |
 | `local` | `qwen-local/qwen3.8-27b` | 全本机 27B，一律 `thinking: off` 压延迟 |
 
-四档结构一致（8 个 override，`tools` / `mutationTools` / `subagentOnlyExtensions`
+四档结构一致（8 个 override，`tools` / `mutationTools`
 原样保留），只换 `defaultModel` / `model` / `thinking`。
-示例档里的 `subagentOnlyExtensions` 是**本机绝对路径**，跨机器使用需自行修改。
 
 ### 给 LLM / agent 的配置提示词
 
@@ -106,11 +108,12 @@
   的 **JSON 值保持不变**；整个文件以 `JSON.stringify(doc, null, 2)` 重新序列化，
   允许缩进、空白与转义形式变化，**不承诺保留原始字节**。
 - 每次实际写入前生成 `settings.json.bak-<YYYYMMDD-HHmmss>`，内容为**切换前的原始
-  字节**，权限固定 `0o600`；临时文件同目录、`flag:"wx"`、缺省 `0o600`（已有 settings
+  字节**，权限固定 `0o600`；同秒多次写入自动追加 `-1`、`-2` 等防冲突序号；
+  临时文件同目录、`flag:"wx"`、缺省 `0o600`（已有 settings
   则保留原 mode）→ `renameSync` 覆盖，失败会清理临时文件。
 - 写前重读做 sha256 指纹比对，尽力检测并发改动；比对到 rename 之间仍有极小竞争
   窗口，本期不引入跨进程锁。
-- 备份只增不减，本期**不自动清理**：`rm ~/.pi/agent/settings.json.bak-*`。
+- 备份写入成功后自动保留同前缀历史备份最近 5 份（`DEFAULT_MAX_BACKUPS = 5`），清理最早备份。
 
 ## 生效时机（无需 `/reload`）
 

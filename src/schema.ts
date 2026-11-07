@@ -104,7 +104,7 @@ function validateOverride(ov: unknown, path: string, profile: string): void {
         if (v !== "inline" && v !== "file-only") fail("必须是 inline 或 file-only", profile, p);
         break;
       case "model":
-        if (!(typeof v === "string" || v === false)) fail("必须是字符串或 false", profile, p);
+        if (!(v === false || isNonEmptyString(v))) fail("必须是非空字符串或 false", profile, p);
         break;
       case "defaultProvider":
         if (!(v === false || isNonEmptyString(v))) fail("必须是非空字符串或 false", profile, p);
@@ -200,9 +200,9 @@ export function validateSubagents(value: unknown, profileName: string): Subagent
     switch (key) {
       case "defaultModel":
       case "defaultProvider":
-      case "defaultThinking":
         if (!isNonEmptyString(v)) fail("必须是非空字符串", profileName, key);
         break;
+      case "defaultThinking":
       case "maxThinking":
         if (typeof v !== "string" || !THINKING_SET.has(v)) {
           fail("必须是 THINKING_LEVELS 之一", profileName, key);

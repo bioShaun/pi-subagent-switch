@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeFs from "node:fs";
 import { join } from "node:path";
@@ -9,7 +9,7 @@ import type { CommandDeps, SelectorState, NotifyLevel, SelectorResult } from "..
 
 const fs = nodeFs as unknown as FsLike;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const TMP = join(ROOT, ".tmp", "20261106-0009-subagent-switch-implementation");
+const TMP = join(ROOT, ".tmp", "command");
 
 function tmp(label: string): string {
   nodeFs.mkdirSync(TMP, { recursive: true });
@@ -185,14 +185,15 @@ test("/subprofile new|edit → 进入配置向导；主面板 new/edit 结果同
   assert.deepEqual(h4.wizardCalls, ["edit"]);
 });
 
-test("USAGE 与补全包含 new/edit/list", async () => {
+test("USAGE 与补全包含 new/edit/delete/list", async () => {
   assert.ok(USAGE.includes("new"));
   assert.ok(USAGE.includes("edit"));
+  assert.ok(USAGE.includes("delete"));
   const dir = tmp("complete2");
   nodeFs.writeFileSync(join(dir, "kimi.json"), KIMI);
   const roots = [{ dir, source: "user" as const }];
   const all = completeProfiles("", { fs, roots });
-  assert.deepEqual(all.map((i) => i.value), ["kimi", "new", "edit", "list"]);
+  assert.deepEqual(all.map((i) => i.value), ["kimi", "new", "edit", "delete", "list"]);
 });
 
 test("runSubprofile 永不抛出：onAfterCommand 自身异常也吞掉", async () => {
@@ -208,8 +209,87 @@ test("completeProfiles 按 prefix 过滤，list 放最后", () => {
   nodeFs.writeFileSync(join(dir, "local.json"), GPT);
   const roots = [{ dir, source: "user" as const }];
   const all = completeProfiles("", { fs, roots });
-  assert.deepEqual(all.map((i) => i.value), ["kimi", "local", "new", "edit", "list"]);
+  assert.deepEqual(all.map((i) => i.value), ["kimi", "local", "new", "edit", "delete", "list"]);
   const ki = completeProfiles("ki", { fs, roots });
   assert.ok(ki.some((i) => i.value === "kimi"));
   assert.ok(!ki.some((i) => i.value === "local"));
+
+  // delete / rm 补全项
+  const del = completeProfiles("del", { fs, roots });
+  assert.ok(del.some((i) => i.value === "delete"));
+  const rm = completeProfiles("rm", { fs, roots });
+  assert.ok(rm.some((i) => i.value === "rm"));
+
+  // delete <prefix> 补全仅针对 user 档名
+  const delArg = completeProfiles("delete k", { fs, roots });
+  assert.deepEqual(delArg.map((i) => i.value), ["delete kimi"]);
+  const rmArg = completeProfiles("rm lo", { fs, roots });
+  assert.deepEqual(rmArg.map((i) => i.value), ["rm local"]);
+});
+
+test("/subprofile delete 与 rm：删除用户档并产生备份", async () => {
+  const h = harness({ "kimi.json": KIMI, "custom.json": GPT });
+  await runSubprofile("delete kimi", h.deps);
+  assert.ok(h.notes.some((n) => n.level === "info" && n.msg.includes("已删除用户档 \"kimi\"")));
+  assert.equal(nodeFs.existsSync(join(h.deps.roots[0]!.dir, "kimi.json")), false);
+  const backups = nodeFs.readdirSync(h.deps.roots[0]!.dir).filter((f) => f.includes("kimi.json.bak-"));
+  assert.equal(backups.length, 1);
+
+  await runSubprofile("rm custom", h.deps);
+  assert.ok(h.notes.some((n) => n.level === "info" && n.msg.includes("已删除用户档 \"custom\"")));
+  assert.equal(nodeFs.existsSync(join(h.deps.roots[0]!.dir, "custom.json")), false);
+
+  // 参数校验
+  await runSubprofile("delete", h.deps);
+  assert.ok(h.notes.some((n) => n.level === "warning" && n.msg.includes("请指定要删除的档名")));
+
+  await runSubprofile("delete a b", h.deps);
+  assert.ok(h.notes.some((n) => n.level === "warning" && n.msg.includes("参数过多")));
+});
+
+test("主面板 d 快捷键删除：二次确认通过/取消/内置档拒绝", async () => {
+  // 1. 二次确认通过
+  let confirmResult = true;
+  const h1 = harness({ "kimi.json": KIMI });
+  const deps1: CommandDeps = {
+    ...h1.deps,
+    confirmDelete: async () => confirmResult,
+  };
+  h1.setSelector({ kind: "delete", name: "kimi" });
+  await runSubprofile("", deps1);
+  assert.ok(h1.notes.some((n) => n.level === "info" && n.msg.includes("已删除用户档 \"kimi\"")));
+  assert.equal(nodeFs.existsSync(join(deps1.roots[0]!.dir, "kimi.json")), false);
+
+  // 2. 二次确认取消
+  confirmResult = false;
+  const h2 = harness({ "kimi.json": KIMI });
+  const deps2: CommandDeps = {
+    ...h2.deps,
+    confirmDelete: async () => confirmResult,
+  };
+  h2.setSelector({ kind: "delete", name: "kimi" });
+  await runSubprofile("", deps2);
+  assert.ok(h2.notes.some((n) => n.level === "info" && n.msg.includes("已取消删除")));
+  assert.equal(nodeFs.existsSync(join(deps2.roots[0]!.dir, "kimi.json")), true);
+
+  // 3. 内置档拒绝删除
+  const dir = tmp("pkg-only");
+  nodeFs.writeFileSync(join(dir, "builtin.json"), KIMI);
+  const h3 = harness({});
+  const deps3: CommandDeps = {
+    ...h3.deps,
+    roots: [{ dir, source: "package" }],
+  };
+  h3.setSelector({ kind: "delete", name: "builtin" });
+  await runSubprofile("", deps3);
+  assert.ok(h3.notes.some((n) => n.level === "warning" && n.msg.includes("内置只读档，不能删除")));
+});
+
+after(() => {
+  nodeFs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    nodeFs.rmdirSync(join(ROOT, ".tmp"));
+  } catch {
+    // 其它并发测试文件尚未结束时忽略
+  }
 });
